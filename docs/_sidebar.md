@@ -1,0 +1,13 @@
+- [Introduction](index.md)
+- [Installation](installation.md)
+- Server Errors
+    - [How Reporting Works](server-errors.md)
+    - [The Report](payload.md)
+    - [Scrubbing & Privacy](scrubbing.md)
+- Browser Errors
+    - [Vue Usage](browser-errors.md)
+- Reference
+    - [Configuration](configuration.md)
+    - [Transports](transports.md)
+    - [Collector API](collector-api.md)
+    - [Testing](testing.md)
