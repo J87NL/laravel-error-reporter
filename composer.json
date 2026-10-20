@@ -1,0 +1,54 @@
+{
+    "name": "j87nl/laravel-error-reporter",
+    "description": "Reports Laravel and browser errors to the J87 error collector.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "errors",
+        "monitoring"
+    ],
+    "homepage": "https://github.com/J87NL/laravel-error-reporter",
+    "authors": [
+        {
+            "name": "Johan Montenij",
+            "homepage": "https://j87.nl"
+        }
+    ],
+    "require": {
+        "php": "^8.5",
+        "illuminate/contracts": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/queue": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^11.0",
+        "pestphp/pest": "^5.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "J87NL\\ErrorReporter\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "J87NL\\ErrorReporter\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "J87NL\\ErrorReporter\\ErrorReporterServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
