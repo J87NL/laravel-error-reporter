@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace J87NL\ErrorReporter;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Throwable;
@@ -23,7 +24,7 @@ class ErrorReport
     {
         $frames = $this->frames($exception);
         $topFrame = Grouping::topInAppFrame($frames);
-        $message = Str::limit($exception->getMessage(), (int) config('error-reporter.max_message_length', 2000));
+        $message = Str::limit($this->message($exception), (int) config('error-reporter.max_message_length', 2000));
 
         return [
             'fingerprint' => Grouping::fingerprint($exception::class, $topFrame, $message),
@@ -73,6 +74,17 @@ class ErrorReport
         return array_slice($frames, 0, max(1, (int) config('error-reporter.max_frames', 30)));
     }
 
+    private function message(Throwable $exception): string
+    {
+        $message = $exception->getMessage();
+
+        if ($exception instanceof QueryException) {
+            $message = sprintf('SQLSTATE[%s] (Connection: %s, SQL: %s)', $exception->getCode(), $exception->getConnectionName(), $exception->getSql());
+        }
+
+        return mb_scrub($message, 'UTF-8');
+    }
+
     /**
      * @return array<array-key, mixed>
      */
@@ -95,17 +107,34 @@ class ErrorReport
 
     private function url(Request $request): string
     {
-        $url = $request->url();
+        $secrets = $this->secretRouteValues($request);
 
-        foreach ($request->route()?->parameters() ?? [] as $name => $value) {
-            if (! is_string($value) || $value === '' || ! $this->scrubber->isSensitive((string) $name)) {
-                continue;
-            }
-
-            $url = str_replace(sprintf('/%s', rawurlencode($value)), sprintf('/%s', Scrubber::MASK), $url);
+        if ($secrets === []) {
+            return $request->url();
         }
 
-        return $url;
+        $segments = array_map(
+            fn (string $segment): string => in_array(rawurldecode($segment), $secrets, true) ? Scrubber::MASK : $segment,
+            explode('/', trim($request->getPathInfo(), '/')),
+        );
+
+        return sprintf('%s/%s', $request->root(), implode('/', $segments));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function secretRouteValues(Request $request): array
+    {
+        $secrets = [];
+
+        foreach ($request->route()?->parameters() ?? [] as $name => $value) {
+            if (is_string($value) && $value !== '' && $this->scrubber->isSensitive((string) $name)) {
+                $secrets[] = $value;
+            }
+        }
+
+        return $secrets;
     }
 
     private function isInApp(string $file): bool

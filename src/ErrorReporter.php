@@ -7,8 +7,10 @@ namespace J87NL\ErrorReporter;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Request;
+use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Support\Facades\Log;
 use J87NL\ErrorReporter\Contracts\ErrorTransport;
+use J87NL\ErrorReporter\Jobs\SendErrorReport;
 use Throwable;
 
 class ErrorReporter
@@ -22,19 +24,18 @@ class ErrorReporter
 
     public function report(Throwable $exception): void
     {
-        if ($this->reporting || ! config('error-reporter.enabled', true) || $this->isIgnored($exception)) {
+        if ($this->reporting || ! config('error-reporter.enabled', true) || $this->isIgnored($exception) || $this->isOwnFailure($exception)) {
             return;
         }
 
         $this->reporting = true;
 
         try {
-            $this->container->make(ErrorTransport::class)->send($this->errorReport->fromThrowable($exception, $this->request(), $this->userId()));
+            $report = $this->errorReport->fromThrowable($exception, $this->request(), $this->userId());
+
+            $this->container->make(ErrorTransport::class)->send($report);
         } catch (Throwable $failure) {
-            Log::warning('The error reporter failed to report an exception.', [
-                'exception' => $exception::class,
-                'failure' => $failure->getMessage(),
-            ]);
+            $this->warn($exception, $failure);
         } finally {
             $this->reporting = false;
         }
@@ -73,6 +74,33 @@ class ErrorReporter
         }
 
         return false;
+    }
+
+    private function isOwnFailure(Throwable $exception): bool
+    {
+        if ($exception instanceof MaxAttemptsExceededException) {
+            return $exception->job?->resolveName() === SendErrorReport::class;
+        }
+
+        foreach ($exception->getTrace() as $frame) {
+            if (($frame['class'] ?? null) === SendErrorReport::class) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function warn(Throwable $exception, Throwable $failure): void
+    {
+        try {
+            Log::warning('The error reporter failed to report an exception.', [
+                'exception' => $exception::class,
+                'failure' => $failure->getMessage(),
+            ]);
+        } catch (Throwable) {
+            return;
+        }
     }
 
     private function request(): ?Request

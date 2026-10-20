@@ -7,10 +7,10 @@ namespace J87NL\ErrorReporter\Jobs;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class SendErrorReport implements ShouldQueue
 {
@@ -46,7 +46,7 @@ class SendErrorReport implements ShouldQueue
                 ->acceptJson()
                 ->withToken($key)
                 ->post($endpoint, $this->report);
-        } catch (ConnectionException $exception) {
+        } catch (Throwable $exception) {
             $this->fallback($exception->getMessage());
 
             return;
@@ -60,8 +60,9 @@ class SendErrorReport implements ShouldQueue
     private function fallback(string $reason): void
     {
         $channel = config('error-reporter.log_channel');
+        $logger = Log::channel(is_string($channel) && $channel !== '' ? $channel : null);
 
-        Log::channel(is_string($channel) && $channel !== '' ? $channel : null)->warning('An error report could not be delivered to the collector.', [
+        $logger->warning('An error report could not be delivered to the collector.', [
             'reason' => $reason,
             'report' => $this->report,
         ]);

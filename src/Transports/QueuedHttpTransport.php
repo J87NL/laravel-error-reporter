@@ -11,7 +11,14 @@ class QueuedHttpTransport implements ErrorTransport
 {
     public function send(array $report): void
     {
-        $job = new SendErrorReport($report);
+        $endpoint = config('error-reporter.endpoint');
+        $key = config('error-reporter.key');
+
+        if (! is_string($endpoint) || $endpoint === '' || ! is_string($key) || $key === '') {
+            return;
+        }
+
+        $job = (new SendErrorReport($report))->beforeCommit();
         $connection = config('error-reporter.queue.connection');
         $queue = config('error-reporter.queue.name');
 

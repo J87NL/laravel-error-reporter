@@ -8,6 +8,7 @@ All notable changes to this package are documented here. The format follows [Kee
 
 - Reports every exception the Laravel handler reports to the J87 error collector, through a queued job with a 2-second timeout and a log fallback.
 - Sends the fingerprint, class, message, file, line, a trimmed trace with in-app flags, route, method, URL without the query string, user id, environment, release and the exception's context.
-- Masks secrets at any depth, and secret route parameters in the URL, before anything leaves the app.
-- A browser script for Vue apps that reports `errorHandler`, `error` and `unhandledrejection` with the public browser key.
+- Masks secrets at any depth, secret route parameters in the URL and the bindings of a `QueryException` before anything leaves the app.
+- Queues nothing while the collector is not configured, and never reports a failure of its own delivery job.
+- A browser script for Vue apps that reports `errorHandler`, `error` and `unhandledrejection` with the public browser key, masking token-like path segments.
 - An `ErrorTransport` contract, so a host can choose how reports leave.

@@ -2,13 +2,19 @@
 
 declare(strict_types=1);
 
+use GuzzleHttp\Promise\PromiseInterface;
+use Illuminate\Contracts\Queue\Job;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
+use Illuminate\Queue\MaxAttemptsExceededException;
+use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
+use J87NL\ErrorReporter\Contracts\ErrorTransport;
 use J87NL\ErrorReporter\ErrorReporter;
 use J87NL\ErrorReporter\Jobs\SendErrorReport;
 use J87NL\ErrorReporter\Scrubber;
@@ -53,7 +59,7 @@ function capturedReport(): array
 
 test('an unhandled exception is queued with the fields the collector needs and nothing from the query string', function (): void {
     Queue::fake();
-    Route::get('orders/{order}', fn () => throw new RuntimeException('Order 42 could not be found'))->name('orders.show');
+    Route::get('orders/{order}', fn (): never => throw new RuntimeException('Order 42 could not be found'))->name('orders.show');
 
     $this->actingAs((new User)->forceFill([
         'id' => 7,
@@ -100,7 +106,7 @@ test('sensitive keys are masked on the client before anything leaves the app', f
 
 test('secret route parameters are masked in the reported address', function (): void {
     Queue::fake();
-    Route::get('reset-password/{token}', fn () => throw new RuntimeException('Expired'))->name('password.reset');
+    Route::get('reset-password/{token}', fn (): never => throw new RuntimeException('Expired'))->name('password.reset');
 
     $this->get('/reset-password/abc123secret');
 
@@ -134,8 +140,9 @@ test('the report falls back to the log when the collector is down or refuses it'
         'message' => 'Boom',
     ]))->handle();
 })->with([
-    'down' => [fn () => fn () => throw new ConnectionException('Connection timed out after 2000 milliseconds')],
-    'refused' => [fn () => fn () => Http::response(null, 500)],
+    'down' => [fn (): Closure => fn (): never => throw new ConnectionException('Connection timed out after 2000 milliseconds')],
+    'refused' => [fn (): Closure => fn (): PromiseInterface => Http::response(null, 500)],
+    'broken' => [fn (): Closure => fn (): never => throw new InvalidArgumentException('Malformed request')],
 ]);
 
 test('ignored exceptions and a missing browser key are left alone', function (): void {
@@ -158,4 +165,101 @@ test('ignored exceptions and a missing browser key are left alone', function ():
         'release' => 'abc1234',
         'environment' => 'production',
     ]);
+});
+
+test('only whole path segments of secret route parameters are masked', function (): void {
+    Queue::fake();
+    Route::get('invites/{token}/{page}', fn (): never => throw new RuntimeException('Expired'))->name('invites.show');
+
+    $this->get('/invites/ab/abc');
+
+    expect(capturedReport()['url'])->toBe(sprintf('http://localhost/invites/%s/abc', Scrubber::MASK));
+});
+
+test('nothing is queued while the collector is not configured', function (): void {
+    Queue::fake();
+    config()->set('error-reporter.endpoint', null);
+
+    app(ErrorReporter::class)->report(new RuntimeException('Boom'));
+
+    Queue::assertNothingPushed();
+});
+
+test('the report is marked to be queued without waiting for an open transaction', function (): void {
+    Queue::fake();
+
+    app(ErrorReporter::class)->report(new RuntimeException('Boom'));
+
+    Queue::assertPushed(SendErrorReport::class, fn (SendErrorReport $job): bool => $job->afterCommit === false);
+});
+
+test('a message with invalid UTF-8 still leaves as valid UTF-8', function (): void {
+    Queue::fake();
+
+    app(ErrorReporter::class)->report(new RuntimeException("Bad byte \xB1 in name"));
+
+    expect(mb_check_encoding(capturedReport()['message'], 'UTF-8'))->toBeTrue();
+});
+
+test('query bindings and the values in the driver message never leave the app', function (): void {
+    Queue::fake();
+
+    app(ErrorReporter::class)->report(new QueryException('testing', 'insert into users (email, password) values (?, ?)', [
+        'jan@example.test',
+        'hunter2',
+    ], new PDOException("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'jan@example.test' for key 'users_email_unique'")));
+
+    $report = capturedReport();
+
+    expect($report['message'])->toContain('insert into users (email, password) values (?, ?)')
+        ->and(json_encode($report))->not->toContain('hunter2')
+        ->and(json_encode($report))->not->toContain('jan@example.test');
+});
+
+test('a delivery job that times out or runs out of attempts is never reported again', function (): void {
+    Queue::fake();
+    $deliveryJob = Mockery::mock(Job::class);
+    $deliveryJob->shouldReceive('resolveName')->andReturn(SendErrorReport::class);
+    $otherJob = Mockery::mock(Job::class);
+    $otherJob->shouldReceive('resolveName')->andReturn('App\\Jobs\\ImportOrders');
+
+    app(ErrorReporter::class)->report(TimeoutExceededException::forJob($deliveryJob));
+    app(ErrorReporter::class)->report(MaxAttemptsExceededException::forJob($deliveryJob));
+
+    Queue::assertNothingPushed();
+
+    app(ErrorReporter::class)->report(MaxAttemptsExceededException::forJob($otherJob));
+
+    Queue::assertPushed(SendErrorReport::class, 1);
+});
+
+test('a failure while delivering a report is never reported again', function (): void {
+    Queue::fake();
+    Http::fake([
+        'collector.test/*' => Http::response(null, 500),
+    ]);
+    Log::shouldReceive('channel')->andReturnUsing(fn (): never => throw new RuntimeException('The log is unavailable'));
+
+    try {
+        (new SendErrorReport([
+            'message' => 'Boom',
+        ]))->handle();
+    } catch (RuntimeException $failure) {
+        app(ErrorReporter::class)->report($failure);
+    }
+
+    Queue::assertNothingPushed();
+});
+
+test('a broken transport and a broken log never break the host', function (): void {
+    app()->bind(ErrorTransport::class, fn (): ErrorTransport => new class implements ErrorTransport
+    {
+        public function send(array $report): void
+        {
+            throw new RuntimeException('Transport down');
+        }
+    });
+    Log::shouldReceive('warning')->once()->andReturnUsing(fn (): never => throw new RuntimeException('The log is unavailable'));
+
+    app(ErrorReporter::class)->report(new RuntimeException('Boom'));
 });
