@@ -77,11 +77,17 @@ class ErrorReporter
 
     private function request(): ?Request
     {
-        if (($this->container->runningInConsole() && ! $this->container->runningUnitTests()) || ! $this->container->bound('request')) {
+        if (! $this->container->bound('request')) {
             return null;
         }
 
-        return $this->container->make(Request::class);
+        $request = $this->container->make(Request::class);
+
+        if ($this->container->runningInConsole() && is_null($request->route())) {
+            return null;
+        }
+
+        return $request;
     }
 
     private function userId(): int|string|null

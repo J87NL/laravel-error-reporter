@@ -8,6 +8,12 @@ export type ErrorReporterOptions = {
     maxReports?: number;
 };
 
+const MAX_MESSAGE_LENGTH = 2000;
+
+const MAX_STACK_LENGTH = 8000;
+
+const IGNORED_MESSAGES = ['Script error.', 'Script error'];
+
 type BrowserError = {
     exceptionClass: string;
     message: string;
@@ -49,6 +55,11 @@ export function installErrorReporter(
 
     const report = (error: unknown, source: string): void => {
         const described = describe(error);
+
+        if (IGNORED_MESSAGES.includes(described.message)) {
+            return;
+        }
+
         const signature = `${described.exceptionClass}:${described.message}`;
 
         if (reported.has(signature) || reported.size >= maxReports) {
@@ -68,8 +79,8 @@ export function installErrorReporter(
             body: JSON.stringify({
                 key: options.key,
                 exception_class: described.exceptionClass,
-                message: described.message,
-                stack: described.stack,
+                message: described.message.slice(0, MAX_MESSAGE_LENGTH),
+                stack: described.stack?.slice(0, MAX_STACK_LENGTH) ?? null,
                 url: `${window.location.origin}${window.location.pathname}`,
                 release: options.release ?? null,
                 environment: options.environment ?? null,

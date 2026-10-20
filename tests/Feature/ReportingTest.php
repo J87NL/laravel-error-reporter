@@ -29,6 +29,11 @@ class ExceptionWithContext extends RuntimeException
                 'session_cookie' => 'c',
                 'step' => 'payment',
             ],
+            'customer' => new ArrayObject([
+                'name' => 'Jan',
+                'password' => 'geheim',
+            ]),
+            'callback' => fn (): bool => true,
         ];
     }
 }
@@ -85,7 +90,21 @@ test('sensitive keys are masked on the client before anything leaves the app', f
             'session_cookie' => Scrubber::MASK,
             'step' => 'payment',
         ],
+        'customer' => [
+            'name' => 'Jan',
+            'password' => Scrubber::MASK,
+        ],
+        'callback' => [],
     ]);
+});
+
+test('secret route parameters are masked in the reported address', function (): void {
+    Queue::fake();
+    Route::get('reset-password/{token}', fn () => throw new RuntimeException('Expired'))->name('password.reset');
+
+    $this->get('/reset-password/abc123secret');
+
+    expect(capturedReport()['url'])->toBe(sprintf('http://localhost/reset-password/%s', Scrubber::MASK));
 });
 
 test('the queued job posts the report with the app key', function (): void {

@@ -10,6 +10,8 @@ use Throwable;
 
 class ErrorReport
 {
+    private const int MAX_CONTEXT_DEPTH = 8;
+
     public function __construct(
         private readonly Scrubber $scrubber,
     ) {}
@@ -32,7 +34,7 @@ class ErrorReport
             'trace' => $frames,
             'route' => $request?->route()?->getName(),
             'method' => $request?->method(),
-            'url' => is_null($request) ? null : $request->url(),
+            'url' => is_null($request) ? null : $this->url($request),
             'user_id' => is_null($userId) ? null : (string) $userId,
             'environment' => (string) config('error-reporter.environment'),
             'release' => $this->stringOrNull(config('error-reporter.release')),
@@ -82,7 +84,28 @@ class ErrorReport
 
         $context = $exception->context();
 
-        return is_array($context) ? $context : [];
+        if (! is_array($context)) {
+            return [];
+        }
+
+        $plain = json_decode((string) json_encode($context, JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE, self::MAX_CONTEXT_DEPTH), true);
+
+        return is_array($plain) ? $plain : [];
+    }
+
+    private function url(Request $request): string
+    {
+        $url = $request->url();
+
+        foreach ($request->route()?->parameters() ?? [] as $name => $value) {
+            if (! is_string($value) || $value === '' || ! $this->scrubber->isSensitive((string) $name)) {
+                continue;
+            }
+
+            $url = str_replace(sprintf('/%s', rawurlencode($value)), sprintf('/%s', Scrubber::MASK), $url);
+        }
+
+        return $url;
     }
 
     private function isInApp(string $file): bool
