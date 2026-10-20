@@ -128,7 +128,7 @@ class ErrorReport
     {
         $secrets = [];
 
-        foreach ($request->route()?->parameters() ?? [] as $name => $value) {
+        foreach ($request->route()?->originalParameters() ?? [] as $name => $value) {
             if (is_string($value) && $value !== '' && $this->scrubber->isSensitive((string) $name)) {
                 $secrets[] = $value;
             }

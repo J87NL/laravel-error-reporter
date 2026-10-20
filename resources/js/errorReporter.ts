@@ -85,7 +85,9 @@ export function installErrorReporter(
     if (
         options === null ||
         options === undefined ||
+        typeof options.endpoint !== 'string' ||
         options.endpoint === '' ||
+        typeof options.key !== 'string' ||
         options.key === '' ||
         typeof window === 'undefined' ||
         installedApps.has(app)

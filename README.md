@@ -68,7 +68,7 @@ Route parameters whose name matches the same list are masked in the reported URL
 
 ## Browser errors
 
-`resources/js/errorReporter.ts` hooks `app.config.errorHandler`, `error` and `unhandledrejection`. It posts with the public browser key, at most ten distinct errors per page load. Path segments of 32 or more letters, digits, `-` and `_`, such as reset tokens, are masked in the reported URL. A rejection with something other than an `Error` is sent as its `message` property, or else only as its type, so objects are never sent whole. Installing it twice on the same app does nothing.
+`resources/js/errorReporter.ts` hooks `app.config.errorHandler`, `error` and `unhandledrejection`. It posts with the public browser key, at most ten distinct errors per page load. Path segments of 32 or more letters, digits, `-` and `_`, such as reset tokens, are masked in the reported URL. A rejection with something other than an `Error` is sent as its `message` property, a number or boolean as its value, and anything else only as its type, so objects are never sent whole. Installing it twice on the same app does nothing.
 
 Point an alias at the script in `vite.config.ts`:
 

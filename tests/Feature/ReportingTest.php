@@ -10,6 +10,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Queue\TimeoutExceededException;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
@@ -262,4 +263,16 @@ test('a broken transport and a broken log never break the host', function (): vo
     Log::shouldReceive('warning')->once()->andReturnUsing(fn (): never => throw new RuntimeException('The log is unavailable'));
 
     app(ErrorReporter::class)->report(new RuntimeException('Boom'));
+});
+
+test('a secret route parameter bound to a model is masked by its raw value', function (): void {
+    Queue::fake();
+    Route::bind('token', fn (string $value): object => (object) [
+        'value' => $value,
+    ]);
+    Route::get('invitations/{token}', fn (): never => throw new RuntimeException('Expired'))->middleware(SubstituteBindings::class);
+
+    $this->get('/invitations/abc123secret');
+
+    expect(capturedReport()['url'])->toBe(sprintf('http://localhost/invitations/%s', Scrubber::MASK));
 });
