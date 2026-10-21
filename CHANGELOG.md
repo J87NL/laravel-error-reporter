@@ -4,6 +4,8 @@ All notable changes to this package are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-21
+
 ### Added
 
 - Reports every exception the Laravel handler reports to the J87 error collector, through a queued job with a 2-second timeout and a log fallback.
@@ -14,3 +16,6 @@ All notable changes to this package are documented here. The format follows [Kee
 - An `ErrorTransport` contract, so a host can choose how reports leave.
 - Replaces a scrubbed context larger than `max_context_bytes` by `{"truncated": true}` before it leaves the app.
 - Logs the scrubbed report when the transport fails, so the report is not lost.
+
+[Unreleased]: https://github.com/J87NL/laravel-error-reporter/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/J87NL/laravel-error-reporter/releases/tag/v0.1.0
