@@ -111,7 +111,7 @@ class ErrorReport
      */
     private function limitedContext(array $context): array
     {
-        if (strlen((string) json_encode($context)) <= (int) config('error-reporter.max_context_bytes', 8192)) {
+        if (strlen((string) json_encode($context, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR)) <= (int) config('error-reporter.max_context_bytes', 8192)) {
             return $context;
         }
 
