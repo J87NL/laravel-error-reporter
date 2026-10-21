@@ -29,13 +29,14 @@ class ErrorReporter
         }
 
         $this->reporting = true;
+        $report = null;
 
         try {
             $report = $this->errorReport->fromThrowable($exception, $this->request(), $this->userId());
 
             $this->container->make(ErrorTransport::class)->send($report);
         } catch (Throwable $failure) {
-            $this->warn($exception, $failure);
+            $this->warn($exception, $failure, $report);
         } finally {
             $this->reporting = false;
         }
@@ -91,13 +92,17 @@ class ErrorReporter
         return false;
     }
 
-    private function warn(Throwable $exception, Throwable $failure): void
+    /**
+     * @param  array<string, mixed>|null  $report
+     */
+    private function warn(Throwable $exception, Throwable $failure, ?array $report): void
     {
         try {
-            Log::warning('The error reporter failed to report an exception.', [
+            Log::warning('The error reporter failed to report an exception.', array_filter([
                 'exception' => $exception::class,
                 'failure' => $failure->getMessage(),
-            ]);
+                'report' => $report,
+            ], fn (mixed $value): bool => ! is_null($value)));
         } catch (Throwable) {
             return;
         }

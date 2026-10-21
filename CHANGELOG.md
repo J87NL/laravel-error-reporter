@@ -12,3 +12,5 @@ All notable changes to this package are documented here. The format follows [Kee
 - Queues nothing while the collector is not configured, and never reports a failure of its own delivery job.
 - A browser script for Vue apps that reports `errorHandler`, `error` and `unhandledrejection` with the public browser key, masking token-like path segments.
 - An `ErrorTransport` contract, so a host can choose how reports leave.
+- Replaces a scrubbed context larger than `max_context_bytes` by `{"truncated": true}` before it leaves the app.
+- Logs the scrubbed report when the transport fails, so the report is not lost.

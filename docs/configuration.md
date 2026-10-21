@@ -25,6 +25,7 @@ This creates `config/error-reporter.php`.
 | `transport` | | `QueuedHttpTransport::class` |
 | `max_frames` | | `30` |
 | `max_message_length` | | `2000` |
+| `max_context_bytes` | | `8192` |
 | `scrub` | | see [Scrub](#scrub) |
 | `ignore` | | `[]` |
 
@@ -129,12 +130,15 @@ nothing is sent, and every report logs the warning described in
 'max_frames' => 30,
 
 'max_message_length' => 2000,
+
+'max_context_bytes' => 8192,
 ```
 
 | Key | Description |
 |---|---|
 | `max_frames` | The number of stack frames sent, counting the frame where the exception was thrown. At least one is always sent |
 | `max_message_length` | The length the exception message is cut to. A cut message ends with `...`, which comes on top of the limit |
+| `max_context_bytes` | The largest scrubbed context, as JSON, that is sent. A larger context is sent as `{"truncated": true}` |
 
 ---
 

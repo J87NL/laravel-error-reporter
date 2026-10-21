@@ -39,7 +39,7 @@ class ErrorReport
             'user_id' => is_null($userId) ? null : (string) $userId,
             'environment' => (string) config('error-reporter.environment'),
             'release' => $this->stringOrNull(config('error-reporter.release')),
-            'context' => $this->scrubber->scrub($this->context($exception)),
+            'context' => $this->limitedContext($this->scrubber->scrub($this->context($exception))),
             'occurred_at' => now()->toIso8601String(),
         ];
     }
@@ -103,6 +103,21 @@ class ErrorReport
         $plain = json_decode((string) json_encode($context, JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE, self::MAX_CONTEXT_DEPTH), true);
 
         return is_array($plain) ? $plain : [];
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $context
+     * @return array<array-key, mixed>
+     */
+    private function limitedContext(array $context): array
+    {
+        if (strlen((string) json_encode($context)) <= (int) config('error-reporter.max_context_bytes', 8192)) {
+            return $context;
+        }
+
+        return [
+            'truncated' => true,
+        ];
     }
 
     private function url(Request $request): string

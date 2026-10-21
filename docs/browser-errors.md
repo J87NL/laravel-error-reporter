@@ -102,6 +102,11 @@ call `installErrorReporter(app, props.initialPage.props.errorReporter)` there, a
 When the options are `null` or `undefined`, or the endpoint or key is not a string or is empty, the
 call does nothing. Calling it twice for the same app does nothing either.
 
+### Content-Security-Policy
+
+When your app sends a Content-Security-Policy, add the collector's origin to `connect-src`, for
+example `connect-src 'self' https://j87.nl`. Without it the browser blocks the report.
+
 ### Typing the shared prop
 
 The file exports the options type, so you can type the shared prop:

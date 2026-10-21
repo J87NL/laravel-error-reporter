@@ -276,3 +276,68 @@ test('a secret route parameter bound to a model is masked by its raw value', fun
 
     expect(capturedReport()['url'])->toBe(sprintf('http://localhost/invitations/%s', Scrubber::MASK));
 });
+
+test('a report the transport cannot take is logged with its scrubbed fields', function (): void {
+    app()->bind(ErrorTransport::class, fn (): ErrorTransport => new class implements ErrorTransport
+    {
+        public function send(array $report): void
+        {
+            throw new RuntimeException('The queue is down');
+        }
+    });
+    Log::shouldReceive('warning')->once()->withArgs(fn (string $message, array $context): bool => $context['failure'] === 'The queue is down'
+        && $context['report']['message'] === 'Payment failed'
+        && $context['report']['context']['password'] === Scrubber::MASK
+        && ! str_contains((string) json_encode($context), 'hunter2'));
+
+    app(ErrorReporter::class)->report(new ExceptionWithContext('Payment failed'));
+});
+
+test('an exception reported while a report is being sent is skipped', function (): void {
+    $sent = new ArrayObject;
+    app()->bind(ErrorTransport::class, fn (): ErrorTransport => new class($sent) implements ErrorTransport
+    {
+        public function __construct(
+            private readonly ArrayObject $sent,
+        ) {}
+
+        public function send(array $report): void
+        {
+            $this->sent->append($report['message']);
+
+            if ($this->sent->count() < 3) {
+                app(ErrorReporter::class)->report(new RuntimeException('Reported while sending'));
+            }
+        }
+    });
+
+    app(ErrorReporter::class)->report(new RuntimeException('Boom'));
+
+    expect($sent->getArrayCopy())->toBe([
+        'Boom',
+    ]);
+});
+
+test('an oversized context is replaced before it leaves the app', function (): void {
+    Queue::fake();
+    config()->set('error-reporter.max_context_bytes', 100);
+
+    $exception = new class('Boom') extends RuntimeException
+    {
+        /**
+         * @return array<string, mixed>
+         */
+        public function context(): array
+        {
+            return [
+                'blob' => str_repeat('b', 500),
+            ];
+        }
+    };
+
+    app(ErrorReporter::class)->report($exception);
+
+    expect(capturedReport()['context'])->toBe([
+        'truncated' => true,
+    ]);
+});

@@ -39,6 +39,7 @@ php artisan vendor:publish --tag=error-reporter-config
 |                                   | `timeout` (seconds)          | `2`                   |
 |                                   | `max_frames`                 | `30`                  |
 |                                   | `max_message_length`         | `2000`                |
+|                                   | `max_context_bytes`          | `8192`                |
 |                                   | `scrub`                      | see below             |
 |                                   | `ignore` (exception classes) | `[]`                  |
 |                                   | `transport`                  | `QueuedHttpTransport` |
@@ -50,13 +51,15 @@ The package hooks into the exception handler. Every reported exception is still 
 - fingerprint, exception class, message, file and line;
 - a trimmed stack trace, each frame marked in-app or vendor;
 - route, method, URL without the query string, user id, environment and release;
-- the exception's `context()`.
+- the exception's `context()`, replaced by `{"truncated": true}` when its JSON is larger than `max_context_bytes`.
 
 A `QueryException` is sent with its SQLSTATE code and its SQL, without the bindings and without the driver's message, which can contain the bound values.
 
 The job uses the configured timeout and does not retry. When the collector is down or refuses the report, the report goes to the log instead. A failure inside the job itself, and a delivery job that times out or runs out of attempts, is never reported again.
 
-The job is queued even when it is reported inside a database transaction that is rolled back. With the `sync` queue the request waits for the collector, at most the timeout; use a real queue in production.
+The job is dispatched with `beforeCommit()`, so it never waits for an open database transaction. Whether it survives a rollback depends on the queue. With Redis, SQS or another queue outside the database, it does. With `QUEUE_CONNECTION=database` on the same database connection as the transaction, the job row is written inside that transaction and rolled back with it, so the report is lost. Point `ERROR_REPORTER_QUEUE_CONNECTION` at a queue outside the database, or at a `database` queue on a connection of its own, when that matters. With the `sync` queue the request waits for the collector, at most the timeout; use a real queue in production.
+
+When the transport itself fails, for example because the queue cannot be reached, the package logs a warning with the scrubbed report, so the report is not lost.
 
 Exceptions that the handler does not report never reach the package: exceptions in the handler's `dontReport` list, and exceptions with their own `report()` method that handles the reporting.
 
@@ -116,6 +119,8 @@ installErrorReporter(app, page.props.errorReporter);
 ```
 
 `browserConfig()` returns `null` while no endpoint or browser key is set, and the script then does nothing.
+
+When the app sends a Content-Security-Policy, add the collector's origin to `connect-src`, for example `connect-src 'self' https://j87.nl`. Without it the browser blocks the report.
 
 ## Other transports
 

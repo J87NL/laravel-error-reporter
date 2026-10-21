@@ -27,7 +27,9 @@ interface ErrorTransport
 `J87NL\ErrorReporter\Jobs\SendErrorReport` job:
 
 - on the configured [queue connection and queue](configuration.md#queue);
-- with `beforeCommit()`, so it is queued even inside a transaction that rolls back.
+- with `beforeCommit()`, so it does not wait for an open transaction. A `database` queue on the
+  same connection still loses the job when that transaction rolls back, see
+  [Transactions](server-errors.md#transactions).
 
 While the endpoint or the server key is empty, it does nothing. The job itself is described in
 [Delivery and fallback](server-errors.md#delivery-and-fallback).

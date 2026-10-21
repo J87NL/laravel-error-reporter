@@ -33,6 +33,8 @@ return [
 
     'max_message_length' => 2000,
 
+    'max_context_bytes' => 8192,
+
     'scrub' => [
         'password',
         'token',

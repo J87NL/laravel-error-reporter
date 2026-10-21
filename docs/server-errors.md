@@ -70,9 +70,15 @@ the server key as a bearer token:
 
 ## Transactions
 
-The job is dispatched with `beforeCommit()`. It is queued right away, even when the exception is
-reported inside a database transaction that is rolled back afterwards. Without this, the report of
-the error that caused the rollback would be lost.
+The job is dispatched with `beforeCommit()`, so it is queued right away and never waits for an open
+database transaction. Whether it survives a rollback depends on the queue:
+
+- With Redis, SQS or another queue outside the database, the job survives the rollback.
+- With `QUEUE_CONNECTION=database` on the same database connection as the transaction, the job row
+  is written inside that transaction and rolled back with it. The report is lost.
+
+When that matters, point [`ERROR_REPORTER_QUEUE_CONNECTION`](configuration.md#queue) at a queue
+outside the database, or at a `database` queue on a connection of its own.
 
 ## No loops
 
@@ -88,5 +94,6 @@ The package never reports its own failures:
 
 Building or sending a report never throws into your code. When it fails, for example because the
 transport throws, the package logs a warning, "The error reporter failed to report an exception.",
-with the exception class and the reason. This warning goes to the default log channel, not to
+with the exception class, the reason and, when it was built, the scrubbed report, so a report the
+transport could not take is not lost. This warning goes to the default log channel, not to
 [`log_channel`](configuration.md#log-channel). When logging fails too, the failure is swallowed.
