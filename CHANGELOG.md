@@ -2,6 +2,21 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Value redaction in the message, the URL and every string in the context, before the message is cut and before the fingerprint is computed. Errors that differ only in a masked value now share a fingerprint.
+- Secret rules, on by default (`ERROR_REPORTER_REDACT_SECRETS`): `Bearer` and `Basic` values, secret query parameters (the `scrub` words plus `redact.query_parameters`), JSON Web Tokens and opaque strings of 32 or more characters that contain a digit.
+- Personal data rules, opt-in (`ERROR_REPORTER_REDACT_PERSONAL_DATA`): e-mail addresses, IBANs, also spaced and foreign, and Dutch phone numbers.
+- Own regular expressions through `redact.patterns`.
+- `ValueRedactor` in the container, so a collector can apply the same rules to the reports it receives.
+
+### Changed
+
+- Messages, URLs and context values that match a secret rule are now sent as `[scrubbed]`. Set `ERROR_REPORTER_REDACT_SECRETS=false` for the old behaviour. A published config without the `redact` section keeps working with the defaults.
+- `ErrorReport` takes a `ValueRedactor` as its second constructor argument. A subclass resolved from the container needs no change.
+
 ## [0.2.1] - 2026-10-22
 
 ### Changed

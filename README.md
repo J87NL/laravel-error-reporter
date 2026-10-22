@@ -36,11 +36,15 @@ php artisan vendor:publish --tag=error-reporter-config
 | `ERROR_REPORTER_LOG_CHANNEL`      | `log_channel`                | the default           |
 | `APP_RELEASE`                     | `release`                    | none                  |
 | `APP_ENV`                         | `environment`                | `production`          |
+| `ERROR_REPORTER_REDACT_SECRETS`   | `redact.secrets`             | `true`                |
+| `ERROR_REPORTER_REDACT_PERSONAL_DATA` | `redact.personal_data`   | `false`               |
 |                                   | `timeout` (seconds)          | `2`                   |
 |                                   | `max_frames`                 | `30`                  |
 |                                   | `max_message_length`         | `2000`                |
 |                                   | `max_context_bytes`          | `8192`                |
 |                                   | `scrub`                      | see below             |
+|                                   | `redact.query_parameters`    | see below             |
+|                                   | `redact.patterns`            | `[]`                  |
 |                                   | `ignore` (exception classes) | `[]`                  |
 |                                   | `transport`                  | `QueuedHttpTransport` |
 
@@ -68,6 +72,14 @@ Exceptions that the handler does not report never reach the package: exceptions 
 Before anything leaves the app, every key containing `password`, `token`, `secret`, `authorization`, `cookie` or `key` is replaced by `[scrubbed]`, at any depth. The match is a substring match, so `key` also masks keys like `monkey` and `primary_key`. Change the list in `error-reporter.scrub`.
 
 Route parameters whose name matches the same list are masked in the reported URL.
+
+Values are masked too, in the message, the URL and every string in the context, before the message is cut and before the fingerprint is computed, so errors that differ only in a masked value are grouped together:
+
+- **Secrets, on by default** (`ERROR_REPORTER_REDACT_SECRETS`): `Bearer` and `Basic` values, query parameters whose name contains a `scrub` word or one of `redact.query_parameters` (`code`, `auth`, `session`, `verifier`, `signature`), JSON Web Tokens, and runs of 32 or more letters, digits, `-` and `_` that contain a digit.
+- **Personal data, opt-in** (`ERROR_REPORTER_REDACT_PERSONAL_DATA=true`): e-mail addresses, IBANs (also spaced and foreign) and Dutch phone numbers.
+- **Your own regular expressions** in `redact.patterns`.
+
+`J87NL\ErrorReporter\ValueRedactor` holds these rules, so a collector can apply them to what it receives. See [docs/scrubbing.md](docs/scrubbing.md).
 
 ## Browser errors
 

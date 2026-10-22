@@ -27,6 +27,10 @@ This creates `config/error-reporter.php`.
 | `max_message_length` | | `2000` |
 | `max_context_bytes` | | `8192` |
 | `scrub` | | see [Scrub](#scrub) |
+| `redact.secrets` | `ERROR_REPORTER_REDACT_SECRETS` | `true` |
+| `redact.personal_data` | `ERROR_REPORTER_REDACT_PERSONAL_DATA` | `false` |
+| `redact.query_parameters` | | see [Redact](#redact) |
+| `redact.patterns` | | `[]` |
 | `ignore` | | `[]` |
 | `heartbeats.enabled` | `ERROR_REPORTER_HEARTBEATS_ENABLED` | `false` |
 | `heartbeats.endpoint` | `ERROR_REPORTER_HEARTBEAT_ENDPOINT` | `null` (derived from `endpoint`) |
@@ -162,7 +166,43 @@ nothing is sent, and every report logs the warning described in
 ```
 
 Context keys and route parameter names that contain one of these words are masked. The match ignores
-case and matches parts of words. See [Scrubbing & Privacy](scrubbing.md).
+case and matches parts of words. With [`redact.secrets`](#redact) on, query parameters in the message
+and the context whose name contains one of these words are masked as well. See
+[Scrubbing & Privacy](scrubbing.md).
+
+---
+
+## Redact
+
+```php
+'redact' => [
+    'secrets' => (bool) env('ERROR_REPORTER_REDACT_SECRETS', true),
+
+    'personal_data' => (bool) env('ERROR_REPORTER_REDACT_PERSONAL_DATA', false),
+
+    'query_parameters' => [
+        'code',
+        'auth',
+        'session',
+        'verifier',
+        'signature',
+    ],
+
+    'patterns' => [],
+],
+```
+
+| Key | Description |
+|---|---|
+| `secrets` | Masks `Bearer` and `Basic` values, secret query parameters, JSON Web Tokens and opaque strings of 32 or more characters with a digit |
+| `personal_data` | Masks e-mail addresses, IBANs and Dutch phone numbers |
+| `query_parameters` | Words that mark a query parameter as secret, on top of the [`scrub`](#scrub) words. Only used while `secrets` is on |
+| `patterns` | Your own regular expressions. Every match is masked, whatever `secrets` and `personal_data` say. An invalid pattern is skipped |
+
+The rules apply to the message, the URL and every string in the context, before the message is cut
+and before the fingerprint is computed. A published config from before this section existed keeps
+working: a missing `redact` section, or a missing key in it, falls back to the defaults above. See
+[Values](scrubbing.md#values).
 
 ---
 

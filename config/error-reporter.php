@@ -45,6 +45,22 @@ return [
         'key',
     ],
 
+    'redact' => [
+        'secrets' => (bool) env('ERROR_REPORTER_REDACT_SECRETS', true),
+
+        'personal_data' => (bool) env('ERROR_REPORTER_REDACT_PERSONAL_DATA', false),
+
+        'query_parameters' => [
+            'code',
+            'auth',
+            'session',
+            'verifier',
+            'signature',
+        ],
+
+        'patterns' => [],
+    ],
+
     'ignore' => [],
 
     'heartbeats' => [

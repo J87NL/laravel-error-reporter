@@ -15,6 +15,14 @@ use Throwable;
 
 class ErrorReporterServiceProvider extends ServiceProvider
 {
+    private const array QUERY_PARAMETER_WORDS = [
+        'code',
+        'auth',
+        'session',
+        'verifier',
+        'signature',
+    ];
+
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/error-reporter.php', 'error-reporter');
@@ -25,6 +33,21 @@ class ErrorReporterServiceProvider extends ServiceProvider
             $words = config('error-reporter.scrub', []);
 
             return new Scrubber(is_array($words) ? array_values(array_filter($words, 'is_string')) : []);
+        });
+
+        $this->app->singleton(ValueRedactor::class, function (): ValueRedactor {
+            $rules = config('error-reporter.redact');
+            $rules = is_array($rules) ? $rules : [];
+
+            return ValueRedactor::fromRules(
+                (bool) ($rules['secrets'] ?? true),
+                (bool) ($rules['personal_data'] ?? false),
+                [
+                    ...$this->strings(config('error-reporter.scrub')),
+                    ...$this->strings($rules['query_parameters'] ?? self::QUERY_PARAMETER_WORDS),
+                ],
+                $this->strings($rules['patterns'] ?? []),
+            );
         });
 
         $this->app->bind(ErrorTransport::class, function (): ErrorTransport {
@@ -54,5 +77,13 @@ class ErrorReporterServiceProvider extends ServiceProvider
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $this->app->make(HeartbeatSchedule::class)->register($schedule);
         });
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function strings(mixed $values): array
+    {
+        return is_array($values) ? array_values(array_filter($values, 'is_string')) : [];
     }
 }
