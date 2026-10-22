@@ -109,8 +109,9 @@ becomes `MAILING`, `report-jobs` becomes `REPORT_JOBS`):
 | `ERROR_REPORTER_{NAME}_HEARTBEAT_CONNECTION` | The queue connection. Empty uses your default connection |
 | `ERROR_REPORTER_{NAME}_HEARTBEAT_QUEUE` | The queue. Empty uses the name itself, so `mailing` pings from the `mailing` queue |
 
-A name without a key or a token is skipped. The name shows up in the task name, for example
-`error-reporter:queue-heartbeat:mailing`.
+A name without a key or a token is skipped, and so is a name that is only a number. Names that
+lead to the same variables, such as `report-jobs` and `report_jobs`, count once. The name shows up in the task
+name, for example `error-reporter:queue-heartbeat:mailing`.
 
 ### In a published config
 
@@ -151,8 +152,10 @@ heartbeat key, the address and the reason. The token is never logged.
 
 The warning comes once per outage, not once per ping: the package remembers the failure in your
 default cache store and stays quiet until a ping gets through again. That ping writes one `info`
-line that the heartbeat reaches the collector again. When the cache cannot be used, every failed
-ping writes a warning.
+line that the heartbeat reaches the collector again. An outage that lasts longer than a day is
+logged again once a day. This needs a cache store that outlives a process, such as `redis`,
+`database` or `file`. With the `array` store, or when the cache cannot be used, every failed ping
+writes a warning.
 
 The collector answers:
 

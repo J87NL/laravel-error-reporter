@@ -13,6 +13,8 @@ use Throwable;
 
 class HeartbeatPinger
 {
+    private const int OUTAGE_REMINDER_SECONDS = 86400;
+
     public function __construct(
         private readonly HeartbeatConfig $config,
     ) {}
@@ -64,7 +66,7 @@ class HeartbeatPinger
                 'reason' => $reason,
             ]);
         } catch (Throwable) {
-            return;
+            $this->forgetOutage($key);
         }
     }
 
@@ -87,9 +89,18 @@ class HeartbeatPinger
     private function startsOutage(string $key): bool
     {
         try {
-            return Cache::add($this->outageKey($key), true);
+            return Cache::add($this->outageKey($key), true, self::OUTAGE_REMINDER_SECONDS);
         } catch (Throwable) {
             return true;
+        }
+    }
+
+    private function forgetOutage(string $key): void
+    {
+        try {
+            Cache::forget($this->outageKey($key));
+        } catch (Throwable) {
+            return;
         }
     }
 

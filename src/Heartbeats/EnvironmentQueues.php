@@ -19,15 +19,18 @@ class EnvironmentQueues
         }
 
         $queues = [];
+        $environmentNames = [];
 
         foreach (explode(',', $names) as $name) {
             $name = trim($name);
+            $environmentName = self::environmentName($name);
 
-            if ($name === '' || array_key_exists($name, $queues)) {
+            if ($environmentName === '' || is_numeric($name) || in_array($environmentName, $environmentNames, true)) {
                 continue;
             }
 
-            $prefix = sprintf('ERROR_REPORTER_%s_HEARTBEAT', self::environmentName($name));
+            $environmentNames[] = $environmentName;
+            $prefix = sprintf('ERROR_REPORTER_%s_HEARTBEAT', $environmentName);
             $key = self::value(sprintf('%s_KEY', $prefix));
             $token = self::value(sprintf('%s_TOKEN', $prefix));
 
@@ -49,7 +52,6 @@ class EnvironmentQueues
     public static function environmentName(string $name): string
     {
         return Str::of($name)
-            ->snake()
             ->replaceMatches('/[^A-Za-z0-9]+/', '_')
             ->trim('_')
             ->upper()

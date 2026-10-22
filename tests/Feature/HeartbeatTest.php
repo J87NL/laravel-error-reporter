@@ -293,6 +293,10 @@ test('extra queues are read from the environment and skipped without a key or to
         'ERROR_REPORTER_REPORT_JOBS_HEARTBEAT_TOKEN' => 'hb_reports_secret',
         'ERROR_REPORTER_REPORT_JOBS_HEARTBEAT_CONNECTION' => 'redis',
         'ERROR_REPORTER_IMPORTS_HEARTBEAT_KEY' => 'shop-imports',
+        'ERROR_REPORTER_SMS_HEARTBEAT_KEY' => 'shop-sms',
+        'ERROR_REPORTER_SMS_HEARTBEAT_TOKEN' => 'hb_sms_secret',
+        'ERROR_REPORTER_1_HEARTBEAT_KEY' => 'shop-numeric',
+        'ERROR_REPORTER_1_HEARTBEAT_TOKEN' => 'hb_numeric_secret',
     ];
 
     foreach ($variables as $variable => $value) {
@@ -300,7 +304,7 @@ test('extra queues are read from the environment and skipped without a key or to
     }
 
     try {
-        expect(EnvironmentQueues::parse(' mailing, report-jobs,,imports,mailing '))->toBe([
+        expect(EnvironmentQueues::parse(' mailing, report-jobs,,imports,mailing,report_jobs,SMS,1 '))->toBe([
             'mailing' => [
                 'key' => 'shop-mailing-queue',
                 'token' => 'hb_mailing_secret',
@@ -312,6 +316,12 @@ test('extra queues are read from the environment and skipped without a key or to
                 'token' => 'hb_reports_secret',
                 'connection' => 'redis',
                 'queue' => 'report-jobs',
+            ],
+            'SMS' => [
+                'key' => 'shop-sms',
+                'token' => 'hb_sms_secret',
+                'connection' => null,
+                'queue' => 'SMS',
             ],
         ])
             ->and(EnvironmentQueues::parse(null))->toBe([])
@@ -368,4 +378,60 @@ test('extra queues from the environment are queued on their own queue and lose a
 
     Http::assertSent(fn (Request $request): bool => $request->url() === 'https://collector.test/api/heartbeats/shop-mailing-queue'
         && $request->hasHeader('Authorization', 'Bearer hb_mailing_secret'));
+});
+
+test('a valid extra queue from the environment is kept when the config entry with its name is incomplete', function (): void {
+    configureHeartbeats([
+        'scheduler' => [],
+        'queues' => [
+            'default' => [
+                'key' => null,
+                'token' => null,
+            ],
+        ],
+        'extra_queues' => [
+            'default' => [
+                'key' => 'environment-default',
+                'token' => 'hb_environment_secret',
+                'connection' => null,
+                'queue' => 'default',
+            ],
+        ],
+    ]);
+    Queue::fake();
+
+    heartbeatEvents()['error-reporter:queue-heartbeat:default']->run(app());
+
+    Queue::assertPushed(PingQueueHeartbeat::class, fn (PingQueueHeartbeat $job): bool => $job->key === 'environment-default'
+        && $job->queue === 'default');
+});
+
+test('a long outage is logged again after a day, and a warning the log lost is retried', function (): void {
+    configureHeartbeats([
+        'queues' => [],
+    ]);
+    Http::fake([
+        'collector.test/*' => Http::response(null, 500),
+    ]);
+    $warnings = 0;
+    Log::shouldReceive('channel')->andReturnSelf();
+    Log::shouldReceive('warning')->andReturnUsing(function () use (&$warnings): void {
+        $warnings++;
+
+        if ($warnings === 1) {
+            throw new RuntimeException('The log is unavailable');
+        }
+    });
+
+    $event = heartbeatEvents()[HeartbeatSchedule::SCHEDULER_EVENT];
+    $event->run(app());
+    $event->run(app());
+    $event->run(app());
+
+    expect($warnings)->toBe(2);
+
+    $this->travel(25)->hours();
+    $event->run(app());
+
+    expect($warnings)->toBe(3);
 });

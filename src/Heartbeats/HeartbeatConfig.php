@@ -66,17 +66,32 @@ class HeartbeatConfig
             return [];
         }
 
-        $configured = config('error-reporter.heartbeats.queues');
-        $fromEnvironment = config('error-reporter.heartbeats.extra_queues');
-
-        $definitions = [
-            ...(is_array($fromEnvironment) ? $fromEnvironment : []),
-            ...(is_array($configured) ? $configured : []),
+        return [
+            ...$this->validQueues(config('error-reporter.heartbeats.extra_queues')),
+            ...$this->validQueues(config('error-reporter.heartbeats.queues')),
         ];
+    }
+
+    /**
+     * @return array{key: string, token: string, connection: string|null, queue: string|null}|null
+     */
+    public function queue(string $name): ?array
+    {
+        return $this->queues()[$name] ?? null;
+    }
+
+    /**
+     * @return array<string, array{key: string, token: string, connection: string|null, queue: string|null}>
+     */
+    private function validQueues(mixed $configured): array
+    {
+        if (! is_array($configured)) {
+            return [];
+        }
 
         $queues = [];
 
-        foreach ($definitions as $name => $definition) {
+        foreach ($configured as $name => $definition) {
             $queue = $this->queueDefinition($definition);
 
             if (is_null($queue) || ! is_string($name) || $name === '') {
@@ -87,14 +102,6 @@ class HeartbeatConfig
         }
 
         return $queues;
-    }
-
-    /**
-     * @return array{key: string, token: string, connection: string|null, queue: string|null}|null
-     */
-    public function queue(string $name): ?array
-    {
-        return $this->queues()[$name] ?? null;
     }
 
     /**
