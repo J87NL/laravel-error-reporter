@@ -87,8 +87,8 @@ The bindings are left out, and so is the driver's own message, which can contain
 
 When the exception has a `context()` method that returns an array, that array is sent. It is first
 converted to plain JSON values: objects become what `json_encode()` makes of them, and values JSON
-cannot hold, such as resources, become `null`. Then sensitive keys are masked and every string value is
-redacted, see [Scrubbing & Privacy](scrubbing.md). When the masked context is larger than
+cannot hold, such as resources, become `null`. Then sensitive keys are masked and every string key and
+value is redacted, see [Scrubbing & Privacy](scrubbing.md). When the masked context is larger than
 [`max_context_bytes`](configuration.md#limits) as JSON, `{"truncated": true}` is sent instead.
 
 ```php

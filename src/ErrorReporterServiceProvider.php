@@ -7,6 +7,7 @@ namespace J87NL\ErrorReporter;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Foundation\Exceptions\Handler;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use J87NL\ErrorReporter\Contracts\ErrorTransport;
 use J87NL\ErrorReporter\Heartbeats\HeartbeatSchedule;
@@ -15,14 +16,6 @@ use Throwable;
 
 class ErrorReporterServiceProvider extends ServiceProvider
 {
-    private const array QUERY_PARAMETER_WORDS = [
-        'code',
-        'auth',
-        'session',
-        'verifier',
-        'signature',
-    ];
-
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/error-reporter.php', 'error-reporter');
@@ -44,9 +37,9 @@ class ErrorReporterServiceProvider extends ServiceProvider
                 (bool) ($rules['personal_data'] ?? false),
                 [
                     ...$this->strings(config('error-reporter.scrub')),
-                    ...$this->strings($rules['query_parameters'] ?? self::QUERY_PARAMETER_WORDS),
+                    ...$this->strings($rules['query_parameters'] ?? ValueRedactor::DEFAULT_QUERY_PARAMETERS),
                 ],
-                $this->strings($rules['patterns'] ?? []),
+                $this->validPatterns($this->strings($rules['patterns'] ?? [])),
             );
         });
 
@@ -77,6 +70,35 @@ class ErrorReporterServiceProvider extends ServiceProvider
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $this->app->make(HeartbeatSchedule::class)->register($schedule);
         });
+    }
+
+    /**
+     * Logs each pattern that is not a valid regular expression once, when the redactor is built.
+     *
+     * @param  list<string>  $patterns
+     * @return list<string>
+     */
+    private function validPatterns(array $patterns): array
+    {
+        $valid = [];
+
+        foreach ($patterns as $pattern) {
+            if (ValueRedactor::isValidPattern($pattern)) {
+                $valid[] = $pattern;
+
+                continue;
+            }
+
+            try {
+                Log::warning('The error reporter skipped a redact pattern that is not a valid regular expression.', [
+                    'pattern' => $pattern,
+                ]);
+            } catch (Throwable) {
+                continue;
+            }
+        }
+
+        return $valid;
     }
 
     /**

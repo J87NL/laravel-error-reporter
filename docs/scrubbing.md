@@ -58,8 +58,9 @@ is masked as well.
 ## Values
 
 Keys only catch a secret that sits under a telling name. Value redaction also looks at the values
-themselves: the message, the URL and every string in the context, at any depth. A match is replaced
-by `[scrubbed]`. It runs before the message is cut to
+themselves: the message, the URL and every string key and value in the context, at any depth. A
+match is replaced by `[scrubbed]`. When two masked context keys would collide, the second becomes
+`[scrubbed]_2`. It runs before the message is cut to
 [`max_message_length`](configuration.md#limits), so a cut never leaves half a token, and before the
 [fingerprint](payload.md#fingerprint) is computed, so errors that differ only in a masked value are
 grouped together.
@@ -70,24 +71,47 @@ There are two sets of rules, configured under [`redact`](configuration.md#redact
 
 | Rule | Example | Reported as |
 |---|---|---|
-| A `Bearer` or `Basic` value | `Bearer hub-0123` | `Bearer [scrubbed]` |
-| A query parameter whose name contains a [`scrub`](configuration.md#scrub) word or a word in `redact.query_parameters` (`code`, `auth`, `session`, `verifier` and `signature` by default) | `?code=abc&page=2` | `?code=[scrubbed]&page=2` |
+| A `Bearer` or `Basic` credential | `Bearer hub-bearer-0123` | `Bearer [scrubbed]` |
+| A secret parameter in a query string, a cookie string or plain text | `?code=abc&page=2` | `?code=[scrubbed]&page=2` |
+| The password in a URL | `mysql://root:hunter2@db` | `mysql://root:[scrubbed]@db` |
+| A Laravel `base64:` key | `base64:Xk3+pQ/aZ9...=` | `base64:[scrubbed]` |
 | A JSON Web Token | `eyJhbGciOi...` | `[scrubbed]` |
-| A run of 32 or more letters, digits, `-` and `_` that contains at least one digit | `def50200a1b2c3d4e5f6...` | `[scrubbed]` |
+| An opaque string, see below | `def50200a1b2c3d4e5f6...` | `[scrubbed]` |
 
-The last rule catches API keys, refresh tokens, hashes and UUIDs. It leaves a long class name or a
-snake case word without digits alone, so `RegisterTicketAvailabilityNotificationsListener` is still
-readable. A random token of 32 characters without a single digit is rare, but it is not caught.
+`Bearer` and `Basic` are matched with a capital only, and only when the value that follows has at
+least eight characters and looks like a credential: it has a digit, a symbol such as `-`, `.` or `=`,
+or a lower case letter followed by a capital. `The basic plan` and `Bearer token missing` are left
+alone.
 
-The `Bearer` and `Basic` rule masks the next word whatever it is, so `Bearer token missing` is
-reported as `Bearer [scrubbed] missing`.
+A parameter is secret when one of the parts of its name is a [`scrub`](configuration.md#scrub) word or
+a word in [`redact.query_parameters`](configuration.md#redact) (`code`, `auth`, `session`,
+`verifier` and `signature` by default). Parts are split on `_`, `-`, `.` and capitals, so `api_key`,
+`XSRF-TOKEN` and `accessToken` are secret, while `author`, `postcode` and `keyword` are not. A word of
+five or more letters also matches at the end of a part, so `accesstoken` is secret too; `apikey` is
+not. The parameter can start the string or follow `?`, `&`, `;` or a space, and its value stops at
+`&`, `#`, `;`, a space, a quote or a bracket, and leaves trailing `.`, `!`, `?` and `:` alone.
+
+An opaque string is a run of 32 or more letters, digits, `-` and `_` in which one of the parts between
+`-` and `_` mixes letters and digits. It catches API keys, refresh tokens and hashes, such as a git
+SHA. It leaves alone:
+
+- a UUID, such as `9b2e1c4a-7d3f-4e8a-b5c6-0123456789ab`;
+- words and numbers joined by `-` or `_`, such as the migration
+  `2019_12_14_000001_create_personal_access_tokens_table` or the slug
+  `summer-sale-2024-amsterdam-centraal`;
+- a class name, after a `\` or before a `\` or `::`, such as `App\Listeners\Oauth2ClientCredentialsListener`;
+- a compiled view, the hash before `.php` in `storage/framework/views`.
+
+What it misses: a token of only letters, or of letters and digits in separate parts, and a standard
+base64 secret with `+`, `/` or `=` outside a `base64:` key, which the rule only masks in pieces. Add a
+[pattern](#your-own-patterns) for those when your app has them.
 
 ### Personal data (opt-in)
 
 | Rule | Example |
 |---|---|
 | E-mail addresses | `jan.jansen@example.com` |
-| IBANs, also spaced and from other countries | `NL91ABNA0417164300`, `BE68 5390 0754 7034` |
+| IBANs, also spaced in groups of four and from other countries | `NL91ABNA0417164300`, `BE68 5390 0754 7034` |
 | Dutch phone numbers, mobile and landline, with `0`, `+31` or `0031`, with or without spaces and dashes | `06-12345678`, `+31 6 1234 5678`, `010-1234567` |
 
 Turn these on for an app that handles customer data:
@@ -97,14 +121,15 @@ ERROR_REPORTER_REDACT_PERSONAL_DATA=true
 ```
 
 The phone rule masks any ten digits that start with `0`, `+31` or `0031`, such as an order number
-`0612345678`. The IBAN rule masks any two capitals followed by two digits and ten or more capitals
-and digits.
+`0612345678`. The IBAN rule masks any two capitals followed by two digits and ten to thirty capitals
+and digits, or by groups of four of which every group after the first has a digit. Words in capitals
+after an IBAN are left alone.
 
 ### Your own patterns
 
 Add regular expressions under `redact.patterns`. Every match is replaced by `[scrubbed]`, whether the
 secret and personal data rules are on or off. A pattern that is not a valid regular expression is
-skipped.
+skipped, with one warning in the log when the rules are loaded.
 
 ```php
 'redact' => [
@@ -116,7 +141,9 @@ skipped.
 ```
 
 When a value cannot be processed, for example because a pattern backtracks too much, the whole value
-is replaced by `[scrubbed]`. Context keys are never changed by value redaction.
+is replaced by `[scrubbed]`. The built-in rules run in linear time. Before they run, the message is
+cut to [`max_message_length`](configuration.md#limits) plus 1024 characters, and a context larger than
+[`max_context_bytes`](configuration.md#limits) is dropped, so a huge value never reaches them.
 
 ### Using the rules elsewhere
 
@@ -129,7 +156,8 @@ use J87NL\ErrorReporter\ValueRedactor;
 app(ValueRedactor::class)->redact($payload);
 ```
 
-`redact()` takes a string or an array of any depth and returns it with every string redacted.
+`redact()` takes a string or an array of any depth and returns it with every string key and value
+redacted.
 
 ## What is not scrubbed
 

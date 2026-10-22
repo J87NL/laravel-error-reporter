@@ -4,28 +4,48 @@ declare(strict_types=1);
 
 namespace J87NL\ErrorReporter;
 
+use Closure;
+
 class ValueRedactor
 {
-    private const array CREDENTIAL_PATTERNS = [
-        '/\b(Bearer|Basic)\s+[^\s"\',;]+/i' => '$1 '.Scrubber::MASK,
+    /**
+     * Words that mark a query parameter as secret, on top of the scrub words.
+     *
+     * @var list<string>
+     */
+    public const array DEFAULT_QUERY_PARAMETERS = [
+        'code',
+        'auth',
+        'session',
+        'verifier',
+        'signature',
     ];
 
-    private const array TOKEN_PATTERNS = [
-        '/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/' => Scrubber::MASK,
-        '/(?<![A-Za-z0-9_-])(?=[A-Za-z_-]*\d)[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/' => Scrubber::MASK,
-    ];
+    private const string CREDENTIAL_PATTERN = '/\b(Bearer|Basic)(\s+)([A-Za-z0-9._~+\/=-]{8,}+)/';
+
+    private const string URL_PASSWORD_PATTERN = '/(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*+:\/\/[^\s:\/@]++:)[^\s\/@]++@/i';
+
+    private const string BASE64_KEY_PATTERN = '/\bbase64:[A-Za-z0-9+\/]{16,}+={0,2}/';
+
+    private const string QUERY_PARAMETER_PATTERN = '/(?<=^|[?&;\s])([A-Za-z0-9_.\[\]-]{1,100}+=)([^&#;\s"\'<>(),]++)/';
+
+    private const string JWT_PATTERN = '/(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]++\.[A-Za-z0-9_-]++\.[A-Za-z0-9_-]*+/';
+
+    private const string OPAQUE_PATTERN = '/(?<![A-Za-z0-9_\\\\-])[A-Za-z0-9_-]{32,}+(?!\.php\b|\\\\|::)/';
+
+    private const string UUID_PATTERN = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
 
     private const array PERSONAL_DATA_PATTERNS = [
-        '/[^\s<>"\'(),;:\[\]]+@[^\s<>"\'(),;:\[\]]+\.[a-z]{2,}/i' => Scrubber::MASK,
-        '/\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]){10,30}\b/' => Scrubber::MASK,
-        '/(?<![\w+])(?:\+31|0031|0)[\s-]?\d(?:[\s-]?\d){8}(?!\d)/' => Scrubber::MASK,
+        '/(?<![^\s<>"\'(),;:\[\]@])[^\s<>"\'(),;:\[\]@]++@(?:[A-Za-z0-9-]++\.)+[a-z]{2,}+/i',
+        '/\b[A-Z]{2}\d{2}(?:[A-Z0-9]{10,30}+|(?:\s[A-Z0-9]{4})(?:\s(?=[A-Z]{0,3}\d)[A-Z0-9]{4}){1,6}(?:\s(?=[A-Z]{0,2}\d)[A-Z0-9]{1,3})?)\b/',
+        '/(?<![\w+])(?:\+31|0031|0)[\s-]?\d(?:[\s-]?\d){8}(?!\d)/',
     ];
 
     /**
-     * @param  array<string, string>  $patterns
+     * @param  list<array{string, string|Closure(array<int, string>): string}>  $rules
      */
     public function __construct(
-        private readonly array $patterns,
+        private readonly array $rules,
     ) {}
 
     /**
@@ -34,70 +54,168 @@ class ValueRedactor
      */
     public static function fromRules(bool $secrets, bool $personalData, array $queryParameterWords, array $extraPatterns): self
     {
-        $patterns = [];
+        $rules = [];
 
         if ($secrets) {
-            $patterns = [
-                ...self::CREDENTIAL_PATTERNS,
-                ...self::queryParameterPattern($queryParameterWords),
-                ...self::TOKEN_PATTERNS,
-            ];
+            $rules = self::secretRules($queryParameterWords);
         }
 
         if ($personalData) {
-            $patterns = [
-                ...$patterns,
-                ...self::PERSONAL_DATA_PATTERNS,
-            ];
-        }
-
-        foreach ($extraPatterns as $pattern) {
-            if (@preg_match($pattern, '') !== false) {
-                $patterns[$pattern] = Scrubber::MASK;
+            foreach (self::PERSONAL_DATA_PATTERNS as $pattern) {
+                $rules[] = [$pattern, Scrubber::MASK];
             }
         }
 
-        return new self($patterns);
+        foreach ($extraPatterns as $pattern) {
+            if (self::isValidPattern($pattern)) {
+                $rules[] = [$pattern, Scrubber::MASK];
+            }
+        }
+
+        return new self($rules);
     }
 
+    public static function isValidPattern(string $pattern): bool
+    {
+        return @preg_match($pattern, '') !== false;
+    }
+
+    /**
+     * Redacts a string, or every string key and value of an array of any depth.
+     */
     public function redact(mixed $value): mixed
     {
         if (is_string($value)) {
             return $this->redactString($value);
         }
 
-        if (is_array($value)) {
-            return array_map(fn (mixed $item): mixed => $this->redact($item), $value);
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        $redacted = [];
+
+        foreach ($value as $key => $item) {
+            $redacted[$this->uniqueKey(is_string($key) ? $this->redactString($key) : $key, $redacted)] = $this->redact($item);
+        }
+
+        return $redacted;
+    }
+
+    public function redactString(string $value): string
+    {
+        foreach ($this->rules as [$pattern, $replacement]) {
+            $value = is_string($replacement)
+                ? preg_replace($pattern, $replacement, $value)
+                : preg_replace_callback($pattern, $replacement, $value);
+
+            if (! is_string($value)) {
+                return Scrubber::MASK;
+            }
         }
 
         return $value;
     }
 
-    public function redactString(string $value): string
+    /**
+     * @param  list<string>  $queryParameterWords
+     * @return list<array{string, string|Closure(array<int, string>): string}>
+     */
+    private static function secretRules(array $queryParameterWords): array
     {
-        if ($this->patterns === []) {
-            return $value;
-        }
+        $words = array_values(array_unique(array_filter(
+            array_map(strtolower(...), $queryParameterWords),
+            fn (string $word): bool => $word !== '',
+        )));
 
-        return preg_replace(array_keys($this->patterns), array_values($this->patterns), $value) ?? Scrubber::MASK;
+        return [
+            [self::CREDENTIAL_PATTERN, fn (array $match): string => self::looksLikeCredential($match[3]) ? sprintf('%s%s%s', $match[1], $match[2], Scrubber::MASK) : $match[0]],
+            [self::URL_PASSWORD_PATTERN, sprintf('$1%s@', Scrubber::MASK)],
+            [self::BASE64_KEY_PATTERN, sprintf('base64:%s', Scrubber::MASK)],
+            [self::QUERY_PARAMETER_PATTERN, fn (array $match): string => self::maskQueryParameter($match[1], $match[2], $words)],
+            [self::JWT_PATTERN, Scrubber::MASK],
+            [self::OPAQUE_PATTERN, fn (array $match): string => self::isOpaque($match[0]) ? Scrubber::MASK : $match[0]],
+        ];
+    }
+
+    /**
+     * A credential has something a word does not: a digit, a symbol or a lower case letter followed by a capital.
+     */
+    private static function looksLikeCredential(string $value): bool
+    {
+        return preg_match('/[0-9._~+\/=-]|[a-z][A-Z]/', $value) === 1;
     }
 
     /**
      * @param  list<string>  $words
-     * @return array<string, string>
      */
-    private static function queryParameterPattern(array $words): array
+    private static function maskQueryParameter(string $name, string $value, array $words): string
     {
-        $words = array_values(array_unique(array_filter($words, fn (string $word): bool => $word !== '')));
+        $trailing = (string) preg_replace('/^.*?([.!?:]*)$/s', '$1', $value);
+        $secret = substr($value, 0, strlen($value) - strlen($trailing));
 
-        if ($words === []) {
-            return [];
+        if ($secret === '' || ! self::isSecretName(rtrim($name, '='), $words)) {
+            return sprintf('%s%s', $name, $value);
         }
 
-        $alternatives = implode('|', array_map(fn (string $word): string => preg_quote($word, '/'), $words));
+        return sprintf('%s%s%s', $name, Scrubber::MASK, $trailing);
+    }
 
-        return [
-            sprintf('/([?&][^=&\s]*(?:%s)[^=&\s]*=)[^&#\s"\']+/i', $alternatives) => sprintf('$1%s', Scrubber::MASK),
-        ];
+    /**
+     * A name is secret when one of its parts is a word, or ends with a word of five or more letters.
+     *
+     * @param  list<string>  $words
+     */
+    private static function isSecretName(string $name, array $words): bool
+    {
+        $parts = preg_split('/[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])/', $name, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        foreach ($parts as $part) {
+            $part = strtolower($part);
+
+            foreach ($words as $word) {
+                if ($part === $word || (strlen($word) >= 5 && str_ends_with($part, $word))) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * A run is opaque when one of its parts mixes letters and digits, unless it is a UUID.
+     */
+    private static function isOpaque(string $run): bool
+    {
+        if (preg_match(self::UUID_PATTERN, $run) === 1) {
+            return false;
+        }
+
+        foreach (preg_split('/[_-]+/', $run, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $part) {
+            if (preg_match('/[A-Za-z]/', $part) === 1 && preg_match('/\d/', $part) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $redacted
+     */
+    private function uniqueKey(int|string $key, array $redacted): int|string
+    {
+        if (! array_key_exists($key, $redacted)) {
+            return $key;
+        }
+
+        $suffix = 2;
+
+        while (array_key_exists(sprintf('%s_%d', $key, $suffix), $redacted)) {
+            $suffix++;
+        }
+
+        return sprintf('%s_%d', $key, $suffix);
     }
 }

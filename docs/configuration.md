@@ -166,8 +166,8 @@ nothing is sent, and every report logs the warning described in
 ```
 
 Context keys and route parameter names that contain one of these words are masked. The match ignores
-case and matches parts of words. With [`redact.secrets`](#redact) on, query parameters in the message
-and the context whose name contains one of these words are masked as well. See
+case and matches parts of words. With [`redact.secrets`](#redact) on, parameters in the message, the
+URL and the context with one of these words as a part of their name are masked as well. See
 [Scrubbing & Privacy](scrubbing.md).
 
 ---
@@ -180,13 +180,7 @@ and the context whose name contains one of these words are masked as well. See
 
     'personal_data' => (bool) env('ERROR_REPORTER_REDACT_PERSONAL_DATA', false),
 
-    'query_parameters' => [
-        'code',
-        'auth',
-        'session',
-        'verifier',
-        'signature',
-    ],
+    'query_parameters' => ValueRedactor::DEFAULT_QUERY_PARAMETERS,
 
     'patterns' => [],
 ],
@@ -194,13 +188,13 @@ and the context whose name contains one of these words are masked as well. See
 
 | Key | Description |
 |---|---|
-| `secrets` | Masks `Bearer` and `Basic` values, secret query parameters, JSON Web Tokens and opaque strings of 32 or more characters with a digit |
+| `secrets` | Masks `Bearer` and `Basic` credentials, secret parameters, passwords in URLs, `base64:` keys, JSON Web Tokens and opaque strings |
 | `personal_data` | Masks e-mail addresses, IBANs and Dutch phone numbers |
-| `query_parameters` | Words that mark a query parameter as secret, on top of the [`scrub`](#scrub) words. Only used while `secrets` is on |
-| `patterns` | Your own regular expressions. Every match is masked, whatever `secrets` and `personal_data` say. An invalid pattern is skipped |
+| `query_parameters` | Words that mark a parameter as secret, on top of the [`scrub`](#scrub) words. Only used while `secrets` is on. The default is `code`, `auth`, `session`, `verifier` and `signature` |
+| `patterns` | Your own regular expressions. Every match is masked, whatever `secrets` and `personal_data` say. An invalid pattern is skipped and logged once |
 
-The rules apply to the message, the URL and every string in the context, before the message is cut
-and before the fingerprint is computed. A published config from before this section existed keeps
+The rules apply to the message, the URL and every string key and value in the context, before the
+message is cut and before the fingerprint is computed. A published config from before this section existed keeps
 working: a missing `redact` section, or a missing key in it, falls back to the defaults above. See
 [Values](scrubbing.md#values).
 

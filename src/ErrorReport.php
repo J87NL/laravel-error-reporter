@@ -13,10 +13,19 @@ class ErrorReport
 {
     private const int MAX_CONTEXT_DEPTH = 8;
 
+    /**
+     * Room left for a secret that straddles the cut, so it is still recognised as a whole.
+     */
+    private const int REDACTION_MARGIN = 1024;
+
+    private readonly ValueRedactor $redactor;
+
     public function __construct(
         private readonly Scrubber $scrubber,
-        private readonly ValueRedactor $redactor,
-    ) {}
+        ?ValueRedactor $redactor = null,
+    ) {
+        $this->redactor = $redactor ?? app(ValueRedactor::class);
+    }
 
     /**
      * @return array<string, mixed>
@@ -25,7 +34,8 @@ class ErrorReport
     {
         $frames = $this->frames($exception);
         $topFrame = Grouping::topInAppFrame($frames);
-        $message = Str::limit($this->redactor->redactString($this->message($exception)), (int) config('error-reporter.max_message_length', 2000));
+        $maxLength = (int) config('error-reporter.max_message_length', 2000);
+        $message = Str::limit($this->redactor->redactString(mb_substr($this->message($exception), 0, max(0, $maxLength) + self::REDACTION_MARGIN)), $maxLength);
 
         return [
             'fingerprint' => Grouping::fingerprint($exception::class, $topFrame, $message),
@@ -111,7 +121,7 @@ class ErrorReport
      */
     private function redactedContext(Throwable $exception): array
     {
-        $context = $this->redactor->redact($this->scrubber->scrub($this->context($exception)));
+        $context = $this->redactor->redact($this->limitedContext($this->scrubber->scrub($this->context($exception))));
 
         return is_array($context) ? $context : [];
     }

@@ -73,9 +73,9 @@ Before anything leaves the app, every key containing `password`, `token`, `secre
 
 Route parameters whose name matches the same list are masked in the reported URL.
 
-Values are masked too, in the message, the URL and every string in the context, before the message is cut and before the fingerprint is computed, so errors that differ only in a masked value are grouped together:
+Values are masked too, in the message, the URL and every string key and value in the context, before the message is cut and before the fingerprint is computed, so errors that differ only in a masked value are grouped together:
 
-- **Secrets, on by default** (`ERROR_REPORTER_REDACT_SECRETS`): `Bearer` and `Basic` values, query parameters whose name contains a `scrub` word or one of `redact.query_parameters` (`code`, `auth`, `session`, `verifier`, `signature`), JSON Web Tokens, and runs of 32 or more letters, digits, `-` and `_` that contain a digit.
+- **Secrets, on by default** (`ERROR_REPORTER_REDACT_SECRETS`): `Bearer` and `Basic` credentials, parameters with a `scrub` word or one of `redact.query_parameters` (`code`, `auth`, `session`, `verifier`, `signature`) as a part of their name, passwords in URLs, `base64:` keys, JSON Web Tokens, and opaque strings of 32 or more characters. UUIDs, migration names, slugs, class names and compiled views stay readable.
 - **Personal data, opt-in** (`ERROR_REPORTER_REDACT_PERSONAL_DATA=true`): e-mail addresses, IBANs (also spaced and foreign) and Dutch phone numbers.
 - **Your own regular expressions** in `redact.patterns`.
 

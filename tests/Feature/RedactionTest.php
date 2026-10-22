@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use J87NL\ErrorReporter\ErrorReport;
@@ -25,17 +26,46 @@ class ExtendedErrorReport extends ErrorReport
     }
 }
 
-function redactedReport(): array
+class ConstructedErrorReport extends ErrorReport
 {
-    $report = null;
+    public function __construct(Scrubber $scrubber)
+    {
+        parent::__construct($scrubber);
+    }
+}
 
-    Queue::assertPushed(SendErrorReport::class, function (SendErrorReport $job) use (&$report): bool {
-        $report = $job->report;
+class RecordingRedactor extends ValueRedactor
+{
+    /**
+     * @var list<int>
+     */
+    public array $lengths = [];
 
-        return true;
-    });
+    public function redactString(string $value): string
+    {
+        $this->lengths[] = mb_strlen($value);
 
-    return $report;
+        return parent::redactString($value);
+    }
+}
+
+class ContextException extends RuntimeException
+{
+    /**
+     * @param  array<array-key, mixed>  $context
+     */
+    public function __construct(string $message, private readonly array $context)
+    {
+        parent::__construct($message);
+    }
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    public function context(): array
+    {
+        return $this->context;
+    }
 }
 
 function reportMessage(string $message): string
@@ -44,7 +74,20 @@ function reportMessage(string $message): string
 
     app(ErrorReporter::class)->report(new RuntimeException($message));
 
-    return redactedReport()['message'];
+    return capturedReport()['message'];
+}
+
+/**
+ * @param  array<array-key, mixed>  $context
+ * @return array<array-key, mixed>
+ */
+function reportContext(array $context): array
+{
+    Queue::fake();
+
+    app(ErrorReporter::class)->report(new ContextException('Failed', $context));
+
+    return capturedReport()['context'];
 }
 
 test('secret values are masked in the message by default', function (string $message, string $expected): void {
@@ -66,9 +109,37 @@ test('secret values are masked in the message by default', function (string $mes
         'Fetch https://api.test/v1?page=2&api_key=abc&limit=5 failed',
         'Fetch https://api.test/v1?page=2&api_key=[scrubbed]&limit=5 failed',
     ],
+    'query parameter in camel case' => [
+        'Fetch https://api.test/v1?accessToken=abc failed',
+        'Fetch https://api.test/v1?accessToken=[scrubbed] failed',
+    ],
+    'parameter at the start of the value' => [
+        'token=abc was refused',
+        'token=[scrubbed] was refused',
+    ],
+    'parameter after a space' => [
+        'Retry with token=abc failed',
+        'Retry with token=[scrubbed] failed',
+    ],
+    'cookie string' => [
+        'Cookie theme=dark; laravel_session=abc; XSRF-TOKEN=def',
+        'Cookie theme=dark; laravel_session=[scrubbed]; XSRF-TOKEN=[scrubbed]',
+    ],
+    'parameter followed by punctuation' => [
+        'Callback https://shop.test/cb?code=abc), retry. Then ?code=def.',
+        'Callback https://shop.test/cb?code=[scrubbed]), retry. Then ?code=[scrubbed].',
+    ],
     'signed url' => [
         'Link https://shop.test/unsubscribe/7?expires=1700000000&signature=f00ba4 expired',
         'Link https://shop.test/unsubscribe/7?expires=1700000000&signature=[scrubbed] expired',
+    ],
+    'password in a connection url' => [
+        'Connection mysql://root:hunter2@localhost:3306/shop refused',
+        'Connection mysql://root:[scrubbed]@localhost:3306/shop refused',
+    ],
+    'base64 application key' => [
+        'Decrypt with base64:Xk3+pQ/aZ9vLm2Nw8RtY4uIo0PsDfGhJ1kL5zXcV7bM= failed',
+        'Decrypt with base64:[scrubbed] failed',
     ],
     'json web token' => [
         'Token eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiI0MiJ9.c2lnbmF0dXJl expired',
@@ -78,14 +149,28 @@ test('secret values are masked in the message by default', function (string $mes
         'Refresh def50200a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4 rejected',
         'Refresh [scrubbed] rejected',
     ],
+    'opaque string with a prefix' => [
+        'Key hub_live_51H8xKqLmNoPqRsTuVwXyZ0123456789 rejected',
+        'Key [scrubbed] rejected',
+    ],
 ]);
 
 test('ordinary values are left alone by the secret rules', function (string $message): void {
     expect(reportMessage($message))->toBe($message);
 })->with([
     'a long class name without digits' => ['Class App\\Listeners\\RegisterTicketAvailabilityNotificationsListener not found'],
+    'a long class name with digits in a namespace' => ['Class App\\Listeners\\Oauth2ClientCredentialsGrantedListener not found'],
+    'a long class name with digits in a static call' => ['Call to Oauth2ClientCredentialsGrantedListener::handle() failed'],
     'a short string with digits' => ['Order 42 failed for reference abc123secret'],
     'a harmless query parameter' => ['Fetch https://api.test/v1?page=2&sort=name failed'],
+    'query parameters that only contain a secret word' => ['Fetch https://api.test/v1?author=jan&postcode=3011AB&keyword=tent failed'],
+    'a uuid' => ['Order 9b2e1c4a-7d3f-4e8a-b5c6-0123456789ab not found'],
+    'a uuid in an address' => ['GET https://shop.test/orders/9b2e1c4a-7d3f-4e8a-b5c6-0123456789ab failed'],
+    'a migration name' => ['Migration 2019_12_14_000001_create_personal_access_tokens_table failed'],
+    'a slug with a year' => ['Page summer-sale-2024-amsterdam-centraal-tickets not found'],
+    'a compiled view' => ['Undefined variable $order (View: /var/www/storage/framework/views/0a1b2c3d4e5f60718293a4b5c6d7e8f901234567.php)'],
+    'the word basic' => ['The basic plan has no Basic support for this account'],
+    'the word bearer' => ['Bearer authentication failed for Bearer token'],
     'an e-mail address' => ['Confirmation to jan.jansen@example.com failed'],
     'a phone number' => ['Call 06-12345678 failed'],
 ]);
@@ -103,8 +188,24 @@ test('personal data is only masked when the app opts in', function (string $mess
         'Bevestiging aan piet@example.nl mislukt',
         'Bevestiging aan [scrubbed] mislukt',
     ],
+    'e-mail address at the end of a sentence' => [
+        'Bevestiging aan piet@mail.example.co.uk.',
+        'Bevestiging aan [scrubbed].',
+    ],
     'iban' => [
         'Refund to NL91ABNA0417164300 failed',
+        'Refund to [scrubbed] failed',
+    ],
+    'iban followed by words in capitals' => [
+        'IBAN NL91ABNA0417164300 IS NOT VALID FOR THIS',
+        'IBAN [scrubbed] IS NOT VALID FOR THIS',
+    ],
+    'spaced iban followed by words in capitals' => [
+        'IBAN BE68 5390 0754 7034 THIS IS NOT VALID',
+        'IBAN [scrubbed] THIS IS NOT VALID',
+    ],
+    'spaced iban with a short last block' => [
+        'Refund to NL91 ABNA 0417 1643 00 failed',
         'Refund to [scrubbed] failed',
     ],
     'spaced foreign iban' => [
@@ -142,34 +243,31 @@ test('personal data leaves numbers that are not phone numbers alone', function (
     'a number of eleven digits' => ['Batch 06123456789 failed'],
 ]);
 
+test('personal data is masked while the secret rules are off', function (): void {
+    config()->set('error-reporter.redact.secrets', false);
+    config()->set('error-reporter.redact.personal_data', true);
+
+    expect(reportMessage('Mail to jan@example.com with Bearer hub-bearer-0123 failed'))->toBe('Mail to [scrubbed] with Bearer hub-bearer-0123 failed');
+});
+
 test('values are masked in the message, the address and the context before anything leaves the app', function (): void {
     Queue::fake();
     config()->set('error-reporter.redact.personal_data', true);
     Route::get('orders/{reference}', function (): never {
-        throw new class('Mail aan jan.jansen@example.com (06-12345678, NL91ABNA0417164300, +31 6 1234 5678, BE68 5390 0754 7034) kon niet worden verstuurd') extends RuntimeException
-        {
-            /**
-             * @return array<string, mixed>
-             */
-            public function context(): array
-            {
-                return [
-                    'order' => 42,
-                    'password' => 'hunter2',
-                    'detail' => 'refresh def50200a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4 rejected',
-                    'nested' => [
-                        'header' => 'Bearer abc.def',
-                        'customer' => 'Jan, jan.jansen@example.com',
-                        'jan@example.com' => 'kept key',
-                    ],
-                ];
-            }
-        };
+        throw new ContextException('Mail aan jan.jansen@example.com (06-12345678, NL91ABNA0417164300, +31 6 1234 5678, BE68 5390 0754 7034) kon niet worden verstuurd', [
+            'order' => 42,
+            'password' => 'hunter2',
+            'detail' => 'refresh def50200a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4 rejected',
+            'nested' => [
+                'header' => 'Bearer abc.def.ghi',
+                'customer' => 'Jan, jan.jansen@example.com',
+            ],
+        ]);
     })->name('orders.show');
 
     $this->get('/orders/0123456789abcdef0123456789abcdef');
 
-    $report = redactedReport();
+    $report = capturedReport();
 
     expect($report['message'])->toBe('Mail aan [scrubbed] ([scrubbed], [scrubbed], [scrubbed], [scrubbed]) kon niet worden verstuurd')
         ->and($report['url'])->toBe('http://localhost/orders/[scrubbed]')
@@ -180,9 +278,50 @@ test('values are masked in the message, the address and the context before anyth
             'nested' => [
                 'header' => 'Bearer [scrubbed]',
                 'customer' => 'Jan, [scrubbed]',
-                'jan@example.com' => 'kept key',
             ],
         ]);
+});
+
+test('context keys are masked as well, without one masked key overwriting another', function (): void {
+    config()->set('error-reporter.redact.personal_data', true);
+
+    expect(reportContext([
+        'jan@example.com' => 'first',
+        'piet@example.com' => 'second',
+        'nested' => [
+            'klaas@example.com' => 'third',
+        ],
+        'order' => 'kept',
+    ]))->toBe([
+        '[scrubbed]' => 'first',
+        '[scrubbed]_2' => 'second',
+        'nested' => [
+            '[scrubbed]' => 'third',
+        ],
+        'order' => 'kept',
+    ]);
+});
+
+test('context values that are not strings are kept as they are', function (): void {
+    config()->set('error-reporter.redact.personal_data', true);
+
+    expect(reportContext([
+        'paid' => true,
+        'refunded' => false,
+        'amount' => 12.5,
+        'order' => 1234567890,
+        'phone' => 612345678,
+        'note' => null,
+        'lines' => [1, 2.5, null, 'jan@example.com'],
+    ]))->toBe([
+        'paid' => true,
+        'refunded' => false,
+        'amount' => 12.5,
+        'order' => 1234567890,
+        'phone' => 612345678,
+        'note' => null,
+        'lines' => [1, 2.5, null, Scrubber::MASK],
+    ]);
 });
 
 test('errors that differ only in a masked value share a fingerprint', function (array $messages, bool $personalData): void {
@@ -213,8 +352,22 @@ test('errors that differ only in a masked value share a fingerprint', function (
     ],
     'bearer tokens' => [
         [
-            'Refused Bearer abcDEF',
-            'Refused Bearer xyzUVW',
+            'Refused Bearer abcDEF12',
+            'Refused Bearer xyzUVW34',
+        ],
+        false,
+    ],
+    'opaque strings' => [
+        [
+            'Refresh def50200a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4 rejected',
+            'Refresh zzz50200q1r2s3t4u5v60718293w4x5y6z7e8f90a1b2c3d4 rejected',
+        ],
+        false,
+    ],
+    'query parameters' => [
+        [
+            'Retry with token=abc failed',
+            'Retry with token=xyz failed',
         ],
         false,
     ],
@@ -222,6 +375,20 @@ test('errors that differ only in a masked value share a fingerprint', function (
         [
             'Refund to NL91ABNA0417164300 failed',
             'Refund to NL20INGB0001234567 failed',
+        ],
+        true,
+    ],
+    'e-mail addresses' => [
+        [
+            'Mail to jan@example.com failed',
+            'Mail to piet@example.nl failed',
+        ],
+        true,
+    ],
+    'phone numbers' => [
+        [
+            'SMS to 06-12345678 failed',
+            'SMS to +31 6 8765 4321 failed',
         ],
         true,
     ],
@@ -235,16 +402,57 @@ test('a secret near the end of a long message is masked before the message is cu
     expect($message)->toBe(sprintf('%s [scrubbed]', str_repeat('x', 20)));
 });
 
+test('the rules run in linear time on long input', function (string $input): void {
+    $redactor = ValueRedactor::fromRules(true, true, ['token', ...ValueRedactor::DEFAULT_QUERY_PARAMETERS], []);
+
+    $start = microtime(true);
+    $redactor->redactString($input);
+
+    expect(microtime(true) - $start)->toBeLessThan(1.0);
+})->with([
+    'many at signs before a domain' => [sprintf('%s x.nl', str_repeat('a@', 100000))],
+    'many at signs and dots' => [str_repeat('a@a.', 50000)],
+    'a long word with dots' => [str_repeat('a.', 100000)],
+    'many json web token starts' => [str_repeat('eyJ', 70000)],
+    'a long run of letters' => [str_repeat('a', 200000)],
+    'many equals signs' => [str_repeat('a=', 100000)],
+]);
+
+test('a long message is cut to a bounded length before the rules run', function (): void {
+    $redactor = new RecordingRedactor([]);
+    app()->instance(ValueRedactor::class, $redactor);
+    config()->set('error-reporter.max_message_length', 100);
+
+    reportMessage(str_repeat('a@', 500000));
+
+    expect(max($redactor->lengths))->toBeLessThanOrEqual(1124);
+});
+
+test('a context too large to send is dropped before the rules run', function (): void {
+    $redactor = new RecordingRedactor([]);
+    app()->instance(ValueRedactor::class, $redactor);
+
+    expect(reportContext([
+        'body' => str_repeat('a@', 50000),
+    ]))->toBe([
+        'truncated' => true,
+    ])->and(max($redactor->lengths))->toBeLessThan(100000);
+});
+
 test('the secret rules can be switched off', function (): void {
     config()->set('error-reporter.redact.secrets', false);
 
-    expect(reportMessage('Refused Bearer abcDEF'))->toBe('Refused Bearer abcDEF');
+    expect(reportMessage('Refused Bearer abcDEF12'))->toBe('Refused Bearer abcDEF12');
 });
 
 test('a published config without the redact section keeps the secret rules on', function (): void {
     config()->set('error-reporter.redact', null);
 
-    expect(reportMessage('Refused Bearer abcDEF'))->toBe('Refused Bearer [scrubbed]');
+    expect(reportMessage('Refused Bearer abcDEF12'))->toBe('Refused Bearer [scrubbed]');
+});
+
+test('the config uses the default query parameter words of the redactor', function (): void {
+    expect(config('error-reporter.redact.query_parameters'))->toBe(ValueRedactor::DEFAULT_QUERY_PARAMETERS);
 });
 
 test('the scrub words and the extra words both mark a query parameter as secret', function (): void {
@@ -258,13 +466,21 @@ test('the scrub words and the extra words both mark a query parameter as secret'
     expect(reportMessage('Open https://shop.test/a?pin=1234&ticket_id=99&page=2 failed'))->toBe('Open https://shop.test/a?pin=[scrubbed]&ticket_id=[scrubbed]&page=2 failed');
 });
 
-test('extra patterns are masked and an invalid pattern is skipped', function (): void {
+test('extra patterns are masked and an invalid pattern is skipped with one warning', function (): void {
+    Log::spy();
     config()->set('error-reporter.redact.patterns', [
         '/\bORD-\d{6}\b/',
         '/(unclosed/',
     ]);
 
-    expect(reportMessage('Order ORD-123456 failed'))->toBe('Order [scrubbed] failed');
+    expect(reportMessage('Order ORD-123456 failed'))->toBe('Order [scrubbed] failed')
+        ->and(reportMessage('Order ORD-654321 failed'))->toBe('Order [scrubbed] failed');
+
+    Log::shouldHaveReceived('warning')
+        ->with('The error reporter skipped a redact pattern that is not a valid regular expression.', [
+            'pattern' => '/(unclosed/',
+        ])
+        ->once();
 });
 
 test('a value the rules cannot process is masked as a whole', function (): void {
@@ -297,9 +513,16 @@ test('a report class an app extended before value redaction existed still resolv
     Queue::fake();
     app()->bind(ErrorReport::class, ExtendedErrorReport::class);
 
-    app(ErrorReporter::class)->report(new RuntimeException('Refused Bearer abcDEF'));
+    app(ErrorReporter::class)->report(new RuntimeException('Refused Bearer abcDEF12'));
 
-    expect(redactedReport())
+    expect(capturedReport())
         ->message->toBe('Refused Bearer [scrubbed]')
         ->app->toBe('extended');
 });
+
+test('a report built with only a scrubber still redacts', function (ErrorReport $report): void {
+    expect($report->fromThrowable(new RuntimeException('Refused Bearer abcDEF12'), null, null)['message'])->toBe('Refused Bearer [scrubbed]');
+})->with([
+    'constructed directly' => [fn (): ErrorReport => new ErrorReport(app(Scrubber::class))],
+    'a subclass that calls the parent constructor' => [fn (): ErrorReport => new ConstructedErrorReport(app(Scrubber::class))],
+]);
