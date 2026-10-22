@@ -3,7 +3,7 @@
 ## Requirements
 
 - PHP 8.5+
-- Laravel 13
+- Laravel 12 or 13
 - A queue worker, for production use
 - For browser errors: Vue 3, and Inertia.js to share the browser config
 

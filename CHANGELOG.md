@@ -2,6 +2,12 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-10-22
+
+### Changed
+
+- Supports Laravel 12 next to Laravel 13. The tests run on both.
+
 ## [0.2.0] - 2026-10-22
 
 ### Added
@@ -24,6 +30,7 @@ All notable changes to this package are documented here. The format follows [Kee
 - Replaces a scrubbed context larger than `max_context_bytes` by `{"truncated": true}` before it leaves the app.
 - Logs the scrubbed report when the transport fails, so the report is not lost.
 
-[Unreleased]: https://github.com/J87NL/laravel-error-reporter/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/J87NL/laravel-error-reporter/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/J87NL/laravel-error-reporter/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/J87NL/laravel-error-reporter/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/J87NL/laravel-error-reporter/releases/tag/v0.1.0
