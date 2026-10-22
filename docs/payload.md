@@ -71,7 +71,8 @@ frames, 30 by default.
 
 First the [value rules](scrubbing.md#values) mask secrets, and personal data when the app opts in.
 Then a message longer than `max_message_length` characters is cut to that length and ends with `...`, so
-it can be up to three characters longer than the limit. Invalid UTF-8 is replaced so the report
+it can be up to three characters longer than the limit. A message that was longer than the limit
+before masking also ends with `...`, even when masking made it shorter. Invalid UTF-8 is replaced so the report
 is always valid JSON.
 
 A `QueryException` gets a different message. It holds the SQLSTATE code, the connection name and the

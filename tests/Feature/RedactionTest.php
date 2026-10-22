@@ -133,6 +133,22 @@ test('secret values are masked in the message by default', function (string $mes
         'Link https://shop.test/unsubscribe/7?expires=1700000000&signature=f00ba4 expired',
         'Link https://shop.test/unsubscribe/7?expires=1700000000&signature=[scrubbed] expired',
     ],
+    'quoted parameter' => [
+        'Config token="abc123secret" rejected',
+        'Config token="[scrubbed]" rejected',
+    ],
+    'parameters with joined names' => [
+        'Fetch https://api.test/v1?sessionid=abc&apikey=def&authcode=ghi&PHPSESSID=jkl&page=2 failed',
+        'Fetch https://api.test/v1?sessionid=[scrubbed]&apikey=[scrubbed]&authcode=[scrubbed]&PHPSESSID=[scrubbed]&page=2 failed',
+    ],
+    'password in a url without a user name' => [
+        'Connection redis://:s3cretpass@127.0.0.1:6379 refused',
+        'Connection redis://:[scrubbed]@127.0.0.1:6379 refused',
+    ],
+    'password with an at sign in a url' => [
+        'Connection mysql://root:p@ss@db:3306/shop refused',
+        'Connection mysql://root:[scrubbed]@db:3306/shop refused',
+    ],
     'password in a connection url' => [
         'Connection mysql://root:hunter2@localhost:3306/shop refused',
         'Connection mysql://root:[scrubbed]@localhost:3306/shop refused',
@@ -161,6 +177,12 @@ test('ordinary values are left alone by the secret rules', function (string $mes
     'a long class name without digits' => ['Class App\\Listeners\\RegisterTicketAvailabilityNotificationsListener not found'],
     'a long class name with digits in a namespace' => ['Class App\\Listeners\\Oauth2ClientCredentialsGrantedListener not found'],
     'a long class name with digits in a static call' => ['Call to Oauth2ClientCredentialsGrantedListener::handle() failed'],
+    'a long method name with digits' => ['Call to undefined method App\\Models\\User::getOauth2ClientCredentialsTokenAttribute()'],
+    'a long property name with digits' => ['Undefined property $this->oauth2ClientCredentialsTokenAttribute and $oauth2ClientCredentialsTokenAttribute'],
+    'migration names with a digit in a word' => ['Migrations 2024_05_01_000000_add_s3_path_to_documents_table, 2019_08_19_000000_convert_tables_to_utf8mb4_unicode and 2024_05_01_000000_add_s3_and_utf8mb4_columns_table failed'],
+    'a view name with a digit' => ['View [emails.order-confirmation-with-attachments2] not found.'],
+    'a component with a digit' => ['Unable to locate file in Vite manifest: resources/js/pages/Dashboard/Widget2ForStatisticsAndLongerNames.vue.'],
+    'slugs with short codes' => ['Page how-to-setup-2fa-with-php8-and-the-v2-api-in-mp4 not found'],
     'a short string with digits' => ['Order 42 failed for reference abc123secret'],
     'a harmless query parameter' => ['Fetch https://api.test/v1?page=2&sort=name failed'],
     'query parameters that only contain a secret word' => ['Fetch https://api.test/v1?author=jan&postcode=3011AB&keyword=tent failed'],
@@ -207,6 +229,10 @@ test('personal data is only masked when the app opts in', function (string $mess
     'spaced iban with a short last block' => [
         'Refund to NL91 ABNA 0417 1643 00 failed',
         'Refund to [scrubbed] failed',
+    ],
+    'mobile number with a zero in brackets' => [
+        'SMS to +31 (0)6 12345678 failed',
+        'SMS to [scrubbed] failed',
     ],
     'spaced foreign iban' => [
         'Refund to BE68 5390 0754 7034 failed',
@@ -265,7 +291,7 @@ test('values are masked in the message, the address and the context before anyth
         ]);
     })->name('orders.show');
 
-    $this->get('/orders/0123456789abcdef0123456789abcdef');
+    $this->get('/orders/9f86d081884c7d659a2feaa0c55ad015');
 
     $report = capturedReport();
 
@@ -280,6 +306,17 @@ test('values are masked in the message, the address and the context before anyth
                 'customer' => 'Jan, [scrubbed]',
             ],
         ]);
+});
+
+test('an e-mail address in the address is masked without the rest of the address', function (): void {
+    Queue::fake();
+    config()->set('error-reporter.redact.personal_data', true);
+    Route::get('users/{email}/edit', fn (): never => throw new RuntimeException('Failed'));
+
+    $this->get('/users/jan@example.com/edit');
+
+    expect(capturedReport()['url'])->toBe('http://localhost/users/[scrubbed]/edit')
+        ->and(reportMessage('Redirect https://site.nl/login?redirect=/home&email=jan@example.com failed'))->toBe('Redirect https://site.nl/login?redirect=/home&email=[scrubbed] failed');
 });
 
 test('context keys are masked as well, without one masked key overwriting another', function (): void {
@@ -406,10 +443,13 @@ test('the rules run in linear time on long input', function (string $input): voi
     $redactor = ValueRedactor::fromRules(true, true, ['token', ...ValueRedactor::DEFAULT_QUERY_PARAMETERS], []);
 
     $start = microtime(true);
-    $redactor->redactString($input);
+    $redacted = $redactor->redactString($input);
 
-    expect(microtime(true) - $start)->toBeLessThan(1.0);
+    expect(microtime(true) - $start)->toBeLessThan(1.0)
+        ->and($redacted)->not->toBe(Scrubber::MASK);
 })->with([
+    'a secret parameter of dots' => [sprintf('code=%sx', str_repeat('.', 100000))],
+    'an e-mail address with many dots' => [sprintf('x@%s1', str_repeat('a.', 100000))],
     'many at signs before a domain' => [sprintf('%s x.nl', str_repeat('a@', 100000))],
     'many at signs and dots' => [str_repeat('a@a.', 50000)],
     'a long word with dots' => [str_repeat('a.', 100000)],
@@ -417,6 +457,27 @@ test('the rules run in linear time on long input', function (string $input): voi
     'a long run of letters' => [str_repeat('a', 200000)],
     'many equals signs' => [str_repeat('a=', 100000)],
 ]);
+
+test('a secret on the margin of a long message is dropped, not cut in half, and the message is marked as cut', function (): void {
+    $secret = 'sk9Zq2LmX7vB4nR8tY1wE6uI3oP5aS0dF2gH';
+    $message = 'Revoked: ';
+
+    for ($index = 0; $index < 46; $index++) {
+        $message .= sprintf('%s ', hash('sha256', (string) $index));
+    }
+
+    $message .= sprintf('%s %s tail', str_repeat('x', max(0, 3024 - mb_strlen($message) - 20)), $secret);
+
+    $reported = reportMessage($message);
+
+    expect($reported)->not->toContain(substr($secret, 0, 8))
+        ->and($reported)->toEndWith('...')
+        ->and(mb_strlen($reported))->toBeLessThanOrEqual(2003);
+});
+
+test('trailing punctuation after a long secret parameter is kept', function (): void {
+    expect(reportMessage(sprintf('Retry with code=%sx. now', str_repeat('.', 3000))))->toBe('Retry with code=[scrubbed]. now');
+});
 
 test('a long message is cut to a bounded length before the rules run', function (): void {
     $redactor = new RecordingRedactor([]);
@@ -449,6 +510,14 @@ test('a published config without the redact section keeps the secret rules on', 
     config()->set('error-reporter.redact', null);
 
     expect(reportMessage('Refused Bearer abcDEF12'))->toBe('Refused Bearer [scrubbed]');
+});
+
+test('a pattern that masks every long run, letters only included, can be added', function (): void {
+    config()->set('error-reporter.redact.patterns', [
+        '/[A-Za-z0-9_-]{32,}+/',
+    ]);
+
+    expect(reportMessage('Token abcdefghijklmnopqrstuvwxyzABCDEFGH rejected'))->toBe('Token [scrubbed] rejected');
 });
 
 test('the config uses the default query parameter words of the redactor', function (): void {

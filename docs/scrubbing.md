@@ -61,7 +61,8 @@ Keys only catch a secret that sits under a telling name. Value redaction also lo
 themselves: the message, the URL and every string key and value in the context, at any depth. A
 match is replaced by `[scrubbed]`. When two masked context keys would collide, the second becomes
 `[scrubbed]_2`. It runs before the message is cut to
-[`max_message_length`](configuration.md#limits), so a cut never leaves half a token, and before the
+[`max_message_length`](configuration.md#limits), so a secret is masked before the cut instead of being
+sent in part, and before the
 [fingerprint](payload.md#fingerprint) is computed, so errors that differ only in a masked value are
 grouped together.
 
@@ -73,7 +74,7 @@ There are two sets of rules, configured under [`redact`](configuration.md#redact
 |---|---|---|
 | A `Bearer` or `Basic` credential | `Bearer hub-bearer-0123` | `Bearer [scrubbed]` |
 | A secret parameter in a query string, a cookie string or plain text | `?code=abc&page=2` | `?code=[scrubbed]&page=2` |
-| The password in a URL | `mysql://root:hunter2@db` | `mysql://root:[scrubbed]@db` |
+| The password in a URL, also without a user name or with an `@` in it | `mysql://root:hunter2@db` | `mysql://root:[scrubbed]@db` |
 | A Laravel `base64:` key | `base64:Xk3+pQ/aZ9...=` | `base64:[scrubbed]` |
 | A JSON Web Token | `eyJhbGciOi...` | `[scrubbed]` |
 | An opaque string, see below | `def50200a1b2c3d4e5f6...` | `[scrubbed]` |
@@ -85,24 +86,33 @@ alone.
 
 A parameter is secret when one of the parts of its name is a [`scrub`](configuration.md#scrub) word or
 a word in [`redact.query_parameters`](configuration.md#redact) (`code`, `auth`, `session`,
-`verifier` and `signature` by default). Parts are split on `_`, `-`, `.` and capitals, so `api_key`,
-`XSRF-TOKEN` and `accessToken` are secret, while `author`, `postcode` and `keyword` are not. A word of
-five or more letters also matches at the end of a part, so `accesstoken` is secret too; `apikey` is
-not. The parameter can start the string or follow `?`, `&`, `;` or a space, and its value stops at
-`&`, `#`, `;`, a space, a quote or a bracket, and leaves trailing `.`, `!`, `?` and `:` alone.
+`verifier`, `signature`, `apikey`, `sessionid`, `sessid` and `authcode` by default). Parts are split
+on `_`, `-`, `.` and capitals, so `api_key`, `XSRF-TOKEN` and `accessToken` are secret, while
+`author`, `postcode` and `keyword` are not. A word of five or more letters also matches at the end of
+a part, so `accesstoken` and `PHPSESSID` are secret too. The parameter can start the string or follow
+`?`, `&`, `;` or a space, its value may be quoted (`token="..."`), and the value stops at `&`, `#`,
+`;`, a space, a quote or a bracket, and leaves trailing `.`, `!`, `?` and `:` alone. A value after a
+colon, such as `api_key: abc` or JSON's `"token":"abc"`, is not a parameter; the
+[`scrub`](configuration.md#scrub) words catch it as a context key.
 
 An opaque string is a run of 32 or more letters, digits, `-` and `_` in which one of the parts between
-`-` and `_` mixes letters and digits. It catches API keys, refresh tokens and hashes, such as a git
-SHA. It leaves alone:
+`-` and `_` looks random: it has a digit, and it switches between letters and digits at least four
+times, or it has 16 or more characters and changes between lower case, capitals and digits at every
+other character or more often. It catches API keys, refresh tokens and hashes, such as a git SHA. It
+leaves alone:
 
 - a UUID, such as `9b2e1c4a-7d3f-4e8a-b5c6-0123456789ab`;
-- words and numbers joined by `-` or `_`, such as the migration
-  `2019_12_14_000001_create_personal_access_tokens_table` or the slug
+- words and numbers joined by `-` or `_`, also with short codes such as `s3`, `utf8mb4`, `2fa` or
+  `v2`, such as the migration `2019_08_19_000000_convert_tables_to_utf8mb4_unicode` or the slug
   `summer-sale-2024-amsterdam-centraal`;
+- a camel case name with a digit or two, such as `Widget2ForStatisticsAndLongerNames`;
 - a class name, after a `\` or before a `\` or `::`, such as `App\Listeners\Oauth2ClientCredentialsListener`;
+- a method, property or variable name, after `::`, `->` or `$`;
 - a compiled view, the hash before `.php` in `storage/framework/views`.
 
-What it misses: a token of only letters, or of letters and digits in separate parts, and a standard
+What it misses: a token of only letters, a token with few switches between letters and digits (a
+random token of 32 characters has about eight, so this is rare), a token of letters and digits in
+separate parts, and a standard
 base64 secret with `+`, `/` or `=` outside a `base64:` key, which the rule only masks in pieces. Add a
 [pattern](#your-own-patterns) for those when your app has them.
 
@@ -112,7 +122,7 @@ base64 secret with `+`, `/` or `=` outside a `base64:` key, which the rule only 
 |---|---|
 | E-mail addresses | `jan.jansen@example.com` |
 | IBANs, also spaced in groups of four and from other countries | `NL91ABNA0417164300`, `BE68 5390 0754 7034` |
-| Dutch phone numbers, mobile and landline, with `0`, `+31` or `0031`, with or without spaces and dashes | `06-12345678`, `+31 6 1234 5678`, `010-1234567` |
+| Dutch phone numbers, mobile and landline, with `0`, `+31`, `+31 (0)` or `0031`, with or without spaces and dashes | `06-12345678`, `+31 (0)6 1234 5678`, `010-1234567` |
 
 Turn these on for an app that handles customer data:
 
@@ -123,7 +133,9 @@ ERROR_REPORTER_REDACT_PERSONAL_DATA=true
 The phone rule masks any ten digits that start with `0`, `+31` or `0031`, such as an order number
 `0612345678`. The IBAN rule masks any two capitals followed by two digits and ten to thirty capitals
 and digits, or by groups of four of which every group after the first has a digit. Words in capitals
-after an IBAN are left alone.
+after an IBAN are left alone. An IBAN in lower case, such as `nl91abna0417164300`, is not masked.
+An e-mail address in a URL is masked on its own, so `/users/jan@example.com/edit` is reported as
+`/users/[scrubbed]/edit`.
 
 ### Your own patterns
 
@@ -141,9 +153,10 @@ skipped, with one warning in the log when the rules are loaded.
 ```
 
 When a value cannot be processed, for example because a pattern backtracks too much, the whole value
-is replaced by `[scrubbed]`. The built-in rules run in linear time. Before they run, the message is
-cut to [`max_message_length`](configuration.md#limits) plus 1024 characters, and a context larger than
-[`max_context_bytes`](configuration.md#limits) is dropped, so a huge value never reaches them.
+is replaced by `[scrubbed]`. The built-in rules run in linear time. Before they run, a message longer
+than [`max_message_length`](configuration.md#limits) plus 1024 characters is cut to that length, and
+the word the cut ends in is dropped, so no part of a secret slips through. A context larger than
+[`max_context_bytes`](configuration.md#limits) is dropped, so a huge value never reaches the rules.
 
 ### Using the rules elsewhere
 

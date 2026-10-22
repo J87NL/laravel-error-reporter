@@ -190,7 +190,7 @@ URL and the context with one of these words as a part of their name are masked a
 |---|---|
 | `secrets` | Masks `Bearer` and `Basic` credentials, secret parameters, passwords in URLs, `base64:` keys, JSON Web Tokens and opaque strings |
 | `personal_data` | Masks e-mail addresses, IBANs and Dutch phone numbers |
-| `query_parameters` | Words that mark a parameter as secret, on top of the [`scrub`](#scrub) words. Only used while `secrets` is on. The default is `code`, `auth`, `session`, `verifier` and `signature` |
+| `query_parameters` | Words that mark a parameter as secret, on top of the [`scrub`](#scrub) words. Only used while `secrets` is on. The default is `code`, `auth`, `session`, `verifier`, `signature`, `apikey`, `sessionid`, `sessid` and `authcode` (`ValueRedactor::DEFAULT_QUERY_PARAMETERS`) |
 | `patterns` | Your own regular expressions. Every match is masked, whatever `secrets` and `personal_data` say. An invalid pattern is skipped and logged once |
 
 The rules apply to the message, the URL and every string key and value in the context, before the

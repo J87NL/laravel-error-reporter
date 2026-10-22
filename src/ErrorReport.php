@@ -34,8 +34,7 @@ class ErrorReport
     {
         $frames = $this->frames($exception);
         $topFrame = Grouping::topInAppFrame($frames);
-        $maxLength = (int) config('error-reporter.max_message_length', 2000);
-        $message = Str::limit($this->redactor->redactString(mb_substr($this->message($exception), 0, max(0, $maxLength) + self::REDACTION_MARGIN)), $maxLength);
+        $message = $this->limitedMessage($this->message($exception));
 
         return [
             'fingerprint' => Grouping::fingerprint($exception::class, $topFrame, $message),
@@ -94,6 +93,30 @@ class ErrorReport
         }
 
         return mb_scrub($message, 'UTF-8');
+    }
+
+    /**
+     * Masks the message, then cuts it. A long message is first cut to a margin past the limit, without
+     * the word the margin ends in, so a secret is never split before the rules see it, and it always gets
+     * the marker of a cut message.
+     */
+    private function limitedMessage(string $message): string
+    {
+        $maxLength = max(0, (int) config('error-reporter.max_message_length', 2000));
+        $isCut = mb_strlen($message) > $maxLength + self::REDACTION_MARGIN;
+
+        if ($isCut) {
+            $message = preg_match('/^.*\s/su', mb_substr($message, 0, $maxLength + self::REDACTION_MARGIN), $match) === 1 ? $match[0] : '';
+        }
+
+        $redacted = $this->redactor->redactString($message);
+        $limited = Str::limit($redacted, $maxLength);
+
+        if ($isCut && mb_strlen($redacted) <= $maxLength) {
+            return sprintf('%s...', rtrim($redacted));
+        }
+
+        return $limited;
     }
 
     /**

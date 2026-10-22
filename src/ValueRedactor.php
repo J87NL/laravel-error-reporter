@@ -19,26 +19,30 @@ class ValueRedactor
         'session',
         'verifier',
         'signature',
+        'apikey',
+        'sessionid',
+        'sessid',
+        'authcode',
     ];
 
     private const string CREDENTIAL_PATTERN = '/\b(Bearer|Basic)(\s+)([A-Za-z0-9._~+\/=-]{8,}+)/';
 
-    private const string URL_PASSWORD_PATTERN = '/(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*+:\/\/[^\s:\/@]++:)[^\s\/@]++@/i';
+    private const string URL_PASSWORD_PATTERN = '/(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*+:\/\/[^\s:\/@]*+:)[^\s\/@]*+(?:@[^\s\/@]*+)*@(?=[^\s\/@]+)/i';
 
     private const string BASE64_KEY_PATTERN = '/\bbase64:[A-Za-z0-9+\/]{16,}+={0,2}/';
 
-    private const string QUERY_PARAMETER_PATTERN = '/(?<=^|[?&;\s])([A-Za-z0-9_.\[\]-]{1,100}+=)([^&#;\s"\'<>(),]++)/';
+    private const string QUERY_PARAMETER_PATTERN = '/(?<=^|[?&;\s])([A-Za-z0-9_.\[\]-]{1,100}+=["\']?)([^&#;\s"\'<>(),]++)/';
 
     private const string JWT_PATTERN = '/(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]++\.[A-Za-z0-9_-]++\.[A-Za-z0-9_-]*+/';
 
-    private const string OPAQUE_PATTERN = '/(?<![A-Za-z0-9_\\\\-])[A-Za-z0-9_-]{32,}+(?!\.php\b|\\\\|::)/';
+    private const string OPAQUE_PATTERN = '/(?<![A-Za-z0-9_\\\\-])(?<!::|->|\$)[A-Za-z0-9_-]{32,}+(?!\.php\b|\\\\|::)/';
 
     private const string UUID_PATTERN = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
 
     private const array PERSONAL_DATA_PATTERNS = [
-        '/(?<![^\s<>"\'(),;:\[\]@])[^\s<>"\'(),;:\[\]@]++@(?:[A-Za-z0-9-]++\.)+[a-z]{2,}+/i',
+        '/(?<![^\s<>"\'(),;:\[\]@\/?&=#])[^\s<>"\'(),;:\[\]@\/?&=#]++@(?:[A-Za-z0-9-]++\.){1,20}[a-z]{2,}+/i',
         '/\b[A-Z]{2}\d{2}(?:[A-Z0-9]{10,30}+|(?:\s[A-Z0-9]{4})(?:\s(?=[A-Z]{0,3}\d)[A-Z0-9]{4}){1,6}(?:\s(?=[A-Z]{0,2}\d)[A-Z0-9]{1,3})?)\b/',
-        '/(?<![\w+])(?:\+31|0031|0)[\s-]?\d(?:[\s-]?\d){8}(?!\d)/',
+        '/(?<![\w+])(?:(?:\+31|0031)[\s-]?(?:\(0\)[\s-]?)?|0[\s-]?)\d(?:[\s-]?\d){8}(?!\d)/',
     ];
 
     /**
@@ -151,10 +155,10 @@ class ValueRedactor
      */
     private static function maskQueryParameter(string $name, string $value, array $words): string
     {
-        $trailing = (string) preg_replace('/^.*?([.!?:]*)$/s', '$1', $value);
-        $secret = substr($value, 0, strlen($value) - strlen($trailing));
+        $secret = rtrim($value, '.!?:');
+        $trailing = substr($value, strlen($secret));
 
-        if ($secret === '' || ! self::isSecretName(rtrim($name, '='), $words)) {
+        if ($secret === '' || ! self::isSecretName(rtrim($name, '="\''), $words)) {
             return sprintf('%s%s', $name, $value);
         }
 
@@ -184,7 +188,9 @@ class ValueRedactor
     }
 
     /**
-     * A run is opaque when one of its parts mixes letters and digits, unless it is a UUID.
+     * A run is opaque when one of its parts looks random: it has a digit, and it switches between letters
+     * and digits at least four times, or it has 16 or more characters and changes between lower case,
+     * capitals and digits at every other character. A UUID is never opaque.
      */
     private static function isOpaque(string $run): bool
     {
@@ -193,12 +199,38 @@ class ValueRedactor
         }
 
         foreach (preg_split('/[_-]+/', $run, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $part) {
-            if (preg_match('/[A-Za-z]/', $part) === 1 && preg_match('/\d/', $part) === 1) {
+            if (preg_match('/\d/', $part) === 1 && self::looksRandom($part)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    private static function looksRandom(string $part): bool
+    {
+        $classes = array_map(fn (string $character): string => match (true) {
+            ctype_digit($character) => 'digit',
+            ctype_upper($character) => 'upper',
+            default => 'lower',
+        }, str_split($part));
+
+        $digitSwitches = 0;
+        $changes = 0;
+
+        for ($index = 1, $length = count($classes); $index < $length; $index++) {
+            if ($classes[$index] === $classes[$index - 1]) {
+                continue;
+            }
+
+            $changes++;
+
+            if ($classes[$index] === 'digit' || $classes[$index - 1] === 'digit') {
+                $digitSwitches++;
+            }
+        }
+
+        return $digitSwitches >= 4 || (count($classes) >= 16 && $changes * 2 >= count($classes));
     }
 
     /**
