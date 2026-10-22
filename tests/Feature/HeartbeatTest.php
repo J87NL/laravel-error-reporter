@@ -7,9 +7,11 @@ use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
+use J87NL\ErrorReporter\Heartbeats\EnvironmentQueues;
 use J87NL\ErrorReporter\Heartbeats\HeartbeatSchedule;
 use J87NL\ErrorReporter\Jobs\PingQueueHeartbeat;
 
@@ -241,4 +243,129 @@ test('a broken log never breaks the scheduler', function (): void {
     heartbeatEvents()[HeartbeatSchedule::SCHEDULER_EVENT]->run(app());
 
     Http::assertSentCount(1);
+});
+
+test('an outage logs one warning until a ping gets through again', function (): void {
+    configureHeartbeats([
+        'queues' => [],
+    ]);
+    Http::fake([
+        'collector.test/*' => Http::sequence()
+            ->push(null, 500)
+            ->push(null, 500)
+            ->push(null, 204)
+            ->push(null, 500),
+    ]);
+    Log::shouldReceive('channel')->andReturnSelf();
+    Log::shouldReceive('warning')->twice();
+    Log::shouldReceive('info')->once()->withArgs(fn (string $message, array $context): bool => $context['heartbeat'] === 'shop-scheduler');
+
+    $event = heartbeatEvents()[HeartbeatSchedule::SCHEDULER_EVENT];
+
+    foreach (range(1, 4) as $run) {
+        $event->run(app());
+    }
+
+    Http::assertSentCount(4);
+});
+
+test('without a usable cache every failed ping logs a warning and nothing throws', function (): void {
+    configureHeartbeats([
+        'queues' => [],
+    ]);
+    Http::fake([
+        'collector.test/*' => Http::response(null, 500),
+    ]);
+    Cache::shouldReceive('add')->andThrow(new RuntimeException('The cache is down'));
+    Log::shouldReceive('channel')->andReturnSelf();
+    Log::shouldReceive('warning')->twice();
+
+    $event = heartbeatEvents()[HeartbeatSchedule::SCHEDULER_EVENT];
+    $event->run(app());
+    $event->run(app());
+});
+
+test('extra queues are read from the environment and skipped without a key or token', function (): void {
+    $variables = [
+        'ERROR_REPORTER_MAILING_HEARTBEAT_KEY' => 'shop-mailing-queue',
+        'ERROR_REPORTER_MAILING_HEARTBEAT_TOKEN' => 'hb_mailing_secret',
+        'ERROR_REPORTER_REPORT_JOBS_HEARTBEAT_KEY' => 'shop-reports',
+        'ERROR_REPORTER_REPORT_JOBS_HEARTBEAT_TOKEN' => 'hb_reports_secret',
+        'ERROR_REPORTER_REPORT_JOBS_HEARTBEAT_CONNECTION' => 'redis',
+        'ERROR_REPORTER_IMPORTS_HEARTBEAT_KEY' => 'shop-imports',
+    ];
+
+    foreach ($variables as $variable => $value) {
+        $_ENV[$variable] = $value;
+    }
+
+    try {
+        expect(EnvironmentQueues::parse(' mailing, report-jobs,,imports,mailing '))->toBe([
+            'mailing' => [
+                'key' => 'shop-mailing-queue',
+                'token' => 'hb_mailing_secret',
+                'connection' => null,
+                'queue' => 'mailing',
+            ],
+            'report-jobs' => [
+                'key' => 'shop-reports',
+                'token' => 'hb_reports_secret',
+                'connection' => 'redis',
+                'queue' => 'report-jobs',
+            ],
+        ])
+            ->and(EnvironmentQueues::parse(null))->toBe([])
+            ->and(EnvironmentQueues::parse(''))->toBe([]);
+    } finally {
+        foreach (array_keys($variables) as $variable) {
+            unset($_ENV[$variable]);
+        }
+    }
+});
+
+test('extra queues from the environment are queued on their own queue and lose a name clash with the config', function (): void {
+    configureHeartbeats([
+        'scheduler' => [],
+        'extra_queues' => [
+            'mailing' => [
+                'key' => 'shop-mailing-queue',
+                'token' => 'hb_mailing_secret',
+                'connection' => 'redis',
+                'queue' => 'mailing',
+            ],
+            'default' => [
+                'key' => 'environment-default',
+                'token' => 'hb_environment_secret',
+                'connection' => null,
+                'queue' => 'default',
+            ],
+        ],
+    ]);
+    Queue::fake();
+    Http::fake([
+        'collector.test/*' => Http::response(null, 204),
+    ]);
+
+    $events = heartbeatEvents();
+
+    expect(array_keys($events))->toEqualCanonicalizing([
+        'error-reporter:queue-heartbeat:default',
+        'error-reporter:queue-heartbeat:mailing',
+    ]);
+
+    foreach ($events as $event) {
+        $event->run(app());
+    }
+
+    Queue::assertPushed(PingQueueHeartbeat::class, fn (PingQueueHeartbeat $job): bool => $job->heartbeat === 'mailing'
+        && $job->connection === 'redis'
+        && $job->queue === 'mailing');
+    Queue::assertPushed(PingQueueHeartbeat::class, fn (PingQueueHeartbeat $job): bool => $job->heartbeat === 'default'
+        && $job->key === 'shop-queue'
+        && is_null($job->queue));
+
+    app()->call([new PingQueueHeartbeat('mailing', 'shop-mailing-queue'), 'handle']);
+
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://collector.test/api/heartbeats/shop-mailing-queue'
+        && $request->hasHeader('Authorization', 'Bearer hb_mailing_secret'));
 });

@@ -67,14 +67,16 @@ class HeartbeatConfig
         }
 
         $configured = config('error-reporter.heartbeats.queues');
+        $fromEnvironment = config('error-reporter.heartbeats.extra_queues');
 
-        if (! is_array($configured)) {
-            return [];
-        }
+        $definitions = [
+            ...(is_array($fromEnvironment) ? $fromEnvironment : []),
+            ...(is_array($configured) ? $configured : []),
+        ];
 
         $queues = [];
 
-        foreach ($configured as $name => $definition) {
+        foreach ($definitions as $name => $definition) {
             $queue = $this->queueDefinition($definition);
 
             if (is_null($queue) || ! is_string($name) || $name === '') {

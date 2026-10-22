@@ -88,13 +88,33 @@ Without an address, nothing is scheduled.
 
 ## 3. Watch more than one queue
 
-The environment variables cover one queue. To watch another queue, for example `mailing`, publish
-the config and add an entry under `heartbeats.queues`. The array key is the name of the queue
-heartbeat; it shows up in the task name.
+The variables above cover one queue. List more queues by name in `ERROR_REPORTER_EXTRA_QUEUES`, and
+give each name its own key and token:
 
-```bash
-php artisan vendor:publish --tag=error-reporter-config
+```dotenv
+ERROR_REPORTER_EXTRA_QUEUES=mailing,reports
+ERROR_REPORTER_MAILING_HEARTBEAT_KEY=shop-mailing-queue
+ERROR_REPORTER_MAILING_HEARTBEAT_TOKEN=hb_...
+ERROR_REPORTER_REPORTS_HEARTBEAT_KEY=shop-reports-queue
+ERROR_REPORTER_REPORTS_HEARTBEAT_TOKEN=hb_...
 ```
+
+For each name the package reads these variables, with the name in upper snake case (`mailing`
+becomes `MAILING`, `report-jobs` becomes `REPORT_JOBS`):
+
+| Variable | Holds |
+|---|---|
+| `ERROR_REPORTER_{NAME}_HEARTBEAT_KEY` | The key of the heartbeat |
+| `ERROR_REPORTER_{NAME}_HEARTBEAT_TOKEN` | Its token |
+| `ERROR_REPORTER_{NAME}_HEARTBEAT_CONNECTION` | The queue connection. Empty uses your default connection |
+| `ERROR_REPORTER_{NAME}_HEARTBEAT_QUEUE` | The queue. Empty uses the name itself, so `mailing` pings from the `mailing` queue |
+
+A name without a key or a token is skipped. The name shows up in the task name, for example
+`error-reporter:queue-heartbeat:mailing`.
+
+### In a published config
+
+You can also add queues under `heartbeats.queues` in a published config. The array key is the name:
 
 ```php
 'queues' => [
@@ -104,18 +124,21 @@ php artisan vendor:publish --tag=error-reporter-config
         'connection' => env('ERROR_REPORTER_QUEUE_HEARTBEAT_CONNECTION'),
         'queue' => env('ERROR_REPORTER_QUEUE_HEARTBEAT_QUEUE'),
     ],
-    'mailing' => [
-        'key' => env('ERROR_REPORTER_MAILING_HEARTBEAT_KEY'),
-        'token' => env('ERROR_REPORTER_MAILING_HEARTBEAT_TOKEN'),
-        'connection' => null,
-        'queue' => 'mailing',
+    'imports' => [
+        'key' => env('ERROR_REPORTER_IMPORTS_HEARTBEAT_KEY'),
+        'token' => env('ERROR_REPORTER_IMPORTS_HEARTBEAT_TOKEN'),
+        'connection' => 'redis',
+        'queue' => 'imports',
     ],
 ],
 ```
 
+Queues from `ERROR_REPORTER_EXTRA_QUEUES` are added to these. When both define the same name, the
+entry in `heartbeats.queues` wins.
+
 Laravel merges a published config only on its top-level keys. When your `config/error-reporter.php`
 has a `heartbeats` key, it replaces the package's whole `heartbeats` block, so copy the full block,
-including `enabled`, `endpoint`, `timeout` and `scheduler`.
+including `enabled`, `endpoint`, `timeout`, `scheduler` and `extra_queues`.
 
 ## Delivery and failures
 
@@ -123,8 +146,13 @@ The ping is a JSON `POST` without data, with the token as a bearer token, with a
 seconds (`heartbeats.timeout`). It is not retried: the next ping comes five minutes later.
 
 A ping that fails never throws into your app. When the collector cannot be reached or answers with
-an error, the package writes one warning to the [log channel](configuration.md#log-channel), with the
+an error, the package writes a warning to the [log channel](configuration.md#log-channel), with the
 heartbeat key, the address and the reason. The token is never logged.
+
+The warning comes once per outage, not once per ping: the package remembers the failure in your
+default cache store and stays quiet until a ping gets through again. That ping writes one `info`
+line that the heartbeat reaches the collector again. When the cache cannot be used, every failed
+ping writes a warning.
 
 The collector answers:
 

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use J87NL\ErrorReporter\Heartbeats\EnvironmentQueues;
 use J87NL\ErrorReporter\Transports\QueuedHttpTransport;
 
 return [
@@ -66,6 +67,8 @@ return [
                 'queue' => env('ERROR_REPORTER_QUEUE_HEARTBEAT_QUEUE'),
             ],
         ],
+
+        'extra_queues' => EnvironmentQueues::parse(env('ERROR_REPORTER_EXTRA_QUEUES')),
     ],
 
 ];

@@ -33,6 +33,7 @@ This creates `config/error-reporter.php`.
 | `heartbeats.timeout` | | `3` |
 | `heartbeats.scheduler` | `ERROR_REPORTER_SCHEDULER_HEARTBEAT_*` | see [Heartbeats](#heartbeats) |
 | `heartbeats.queues` | `ERROR_REPORTER_QUEUE_HEARTBEAT_*` | see [Heartbeats](#heartbeats) |
+| `heartbeats.extra_queues` | `ERROR_REPORTER_EXTRA_QUEUES` | `[]` |
 
 ---
 
@@ -204,6 +205,8 @@ are still logged by Laravel as usual; to stop Laravel reporting them at all, use
             'queue' => env('ERROR_REPORTER_QUEUE_HEARTBEAT_QUEUE'),
         ],
     ],
+
+    'extra_queues' => EnvironmentQueues::parse(env('ERROR_REPORTER_EXTRA_QUEUES')),
 ],
 ```
 
@@ -214,5 +217,6 @@ are still logged by Laravel as usual; to stop Laravel reporting them at all, use
 | `timeout` | The connect timeout and the request timeout of a ping, in seconds |
 | `scheduler` | The key and token of the scheduler heartbeat |
 | `queues` | One entry per watched queue, keyed by a name. Each has a key, a token and an optional connection and queue |
+| `extra_queues` | The queues named in `ERROR_REPORTER_EXTRA_QUEUES`, read from `ERROR_REPORTER_{NAME}_HEARTBEAT_*`. On a name clash, `queues` wins |
 
 A heartbeat without a key or a token is skipped. See [Heartbeats](heartbeats.md).

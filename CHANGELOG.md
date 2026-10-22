@@ -8,7 +8,8 @@ All notable changes to this package are documented here. The format follows [Kee
 
 - Optional heartbeats, off by default: every five minutes the scheduler pings its own heartbeat on the collector, and queues a job per watched queue that pings that queue's heartbeat when a worker handles it.
 - A queue heartbeat job is unique per queue, so a stopped worker does not pile up pings.
-- A failed ping never throws and logs one warning without the token.
+- A failed ping never throws. It logs one warning per outage without the token, and one info line when the heartbeat gets through again.
+- Extra queues through `ERROR_REPORTER_EXTRA_QUEUES`, for example `mailing`, with `ERROR_REPORTER_MAILING_HEARTBEAT_KEY` and `_TOKEN`, without publishing the config.
 
 ## [0.1.0] - 2026-10-21
 

@@ -124,7 +124,7 @@ When the app sends a Content-Security-Policy, add the collector's origin to `con
 
 ## Heartbeats
 
-Optionally, the package lets the collector watch your scheduler and queue workers. Every five minutes the scheduler pings its own heartbeat, and queues a small job per watched queue that pings that queue's heartbeat when a worker handles it. A ping that fails never throws; it logs one warning without the token.
+Optionally, the package lets the collector watch your scheduler and queue workers. Every five minutes the scheduler pings its own heartbeat, and queues a small job per watched queue that pings that queue's heartbeat when a worker handles it. A ping that fails never throws; it logs one warning per outage, without the token.
 
 Create the heartbeats in the j87.nl admin under Monitoring → Heartbeats, with an interval of 5 minutes and a grace of 5 (scheduler) or 10 (queue) minutes, and add the keys and the tokens the admin shows once:
 
@@ -146,8 +146,17 @@ ERROR_REPORTER_QUEUE_HEARTBEAT_TOKEN=hb_...
 | `ERROR_REPORTER_QUEUE_HEARTBEAT_TOKEN`       | `heartbeats.queues.default.token` | none                          |
 | `ERROR_REPORTER_QUEUE_HEARTBEAT_CONNECTION`  | `heartbeats.queues.default.connection` | the default              |
 | `ERROR_REPORTER_QUEUE_HEARTBEAT_QUEUE`       | `heartbeats.queues.default.queue` | the default                   |
+| `ERROR_REPORTER_EXTRA_QUEUES`                | `heartbeats.extra_queues`        | none                           |
 
-The address is derived from `ERROR_REPORTER_ENDPOINT` by swapping `/ingest/errors` for `/heartbeats`. More queues, such as a `mailing` queue, go in the published config under `heartbeats.queues`. See [docs/heartbeats.md](docs/heartbeats.md).
+The address is derived from `ERROR_REPORTER_ENDPOINT` by swapping `/ingest/errors` for `/heartbeats`. Watch more queues by naming them in `ERROR_REPORTER_EXTRA_QUEUES`, with a key and token per name in upper snake case. The queue defaults to the name:
+
+```dotenv
+ERROR_REPORTER_EXTRA_QUEUES=mailing
+ERROR_REPORTER_MAILING_HEARTBEAT_KEY=shop-mailing-queue
+ERROR_REPORTER_MAILING_HEARTBEAT_TOKEN=hb_...
+```
+
+Queues under `heartbeats.queues` in a published config still work and win on a name clash. See [docs/heartbeats.md](docs/heartbeats.md).
 
 ## Other transports
 
