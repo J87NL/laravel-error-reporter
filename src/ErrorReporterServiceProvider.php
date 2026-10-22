@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace J87NL\ErrorReporter;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Foundation\Exceptions\Handler;
 use Illuminate\Support\ServiceProvider;
 use J87NL\ErrorReporter\Contracts\ErrorTransport;
+use J87NL\ErrorReporter\Heartbeats\HeartbeatSchedule;
 use J87NL\ErrorReporter\Transports\QueuedHttpTransport;
 use Throwable;
 
@@ -47,6 +49,10 @@ class ErrorReporterServiceProvider extends ServiceProvider
             $handler->reportable(function (Throwable $exception): void {
                 $this->app->make(ErrorReporter::class)->report($exception);
             });
+        });
+
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            $this->app->make(HeartbeatSchedule::class)->register($schedule);
         });
     }
 }

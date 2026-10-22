@@ -16,6 +16,8 @@ shows up once with a count instead of once per occurrence.
    reached, the report goes to the log instead.
 4. In the browser, a small script catches Vue errors, uncaught errors and unhandled promise
    rejections, and posts them with a public browser key.
+5. Optionally, the package pings a heartbeat every five minutes from the scheduler and from each
+   watched queue, so the collector notices when either stops.
 
 ## Quick example
 
@@ -65,6 +67,7 @@ The Vite alias and the other steps are in [Vue Usage](browser-errors.md).
 - [The Report](payload.md) - every field that leaves your app
 - [Scrubbing & Privacy](scrubbing.md) - what is masked before sending
 - [Vue Usage](browser-errors.md) - report browser errors
+- [Heartbeats](heartbeats.md) - let the collector watch your scheduler and queues
 - [Configuration](configuration.md) - all config keys
 - [Transports](transports.md) - send reports your own way
 - [Collector API](collector-api.md) - what the collector accepts and answers

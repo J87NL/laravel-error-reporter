@@ -6,6 +6,8 @@
     - [Scrubbing & Privacy](scrubbing.md)
 - Browser Errors
     - [Vue Usage](browser-errors.md)
+- Monitoring
+    - [Heartbeats](heartbeats.md)
 - Reference
     - [Configuration](configuration.md)
     - [Transports](transports.md)

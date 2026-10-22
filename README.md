@@ -122,6 +122,33 @@ installErrorReporter(app, page.props.errorReporter);
 
 When the app sends a Content-Security-Policy, add the collector's origin to `connect-src`, for example `connect-src 'self' https://j87.nl`. Without it the browser blocks the report.
 
+## Heartbeats
+
+Optionally, the package lets the collector watch your scheduler and queue workers. Every five minutes the scheduler pings its own heartbeat, and queues a small job per watched queue that pings that queue's heartbeat when a worker handles it. A ping that fails never throws; it logs one warning without the token.
+
+Create the heartbeats in the j87.nl admin under Monitoring → Heartbeats, with an interval of 5 minutes and a grace of 5 (scheduler) or 10 (queue) minutes, and add the keys and the tokens the admin shows once:
+
+```dotenv
+ERROR_REPORTER_HEARTBEATS_ENABLED=true
+ERROR_REPORTER_SCHEDULER_HEARTBEAT_KEY=shop-scheduler
+ERROR_REPORTER_SCHEDULER_HEARTBEAT_TOKEN=hb_...
+ERROR_REPORTER_QUEUE_HEARTBEAT_KEY=shop-queue
+ERROR_REPORTER_QUEUE_HEARTBEAT_TOKEN=hb_...
+```
+
+| Environment variable                         | Config key                       | Default                        |
+| -------------------------------------------- | -------------------------------- | ------------------------------ |
+| `ERROR_REPORTER_HEARTBEATS_ENABLED`          | `heartbeats.enabled`             | `false`                        |
+| `ERROR_REPORTER_HEARTBEAT_ENDPOINT`          | `heartbeats.endpoint`            | derived from the error endpoint |
+| `ERROR_REPORTER_SCHEDULER_HEARTBEAT_KEY`     | `heartbeats.scheduler.key`       | none                           |
+| `ERROR_REPORTER_SCHEDULER_HEARTBEAT_TOKEN`   | `heartbeats.scheduler.token`     | none                           |
+| `ERROR_REPORTER_QUEUE_HEARTBEAT_KEY`         | `heartbeats.queues.default.key`  | none                           |
+| `ERROR_REPORTER_QUEUE_HEARTBEAT_TOKEN`       | `heartbeats.queues.default.token` | none                          |
+| `ERROR_REPORTER_QUEUE_HEARTBEAT_CONNECTION`  | `heartbeats.queues.default.connection` | the default              |
+| `ERROR_REPORTER_QUEUE_HEARTBEAT_QUEUE`       | `heartbeats.queues.default.queue` | the default                   |
+
+The address is derived from `ERROR_REPORTER_ENDPOINT` by swapping `/ingest/errors` for `/heartbeats`. More queues, such as a `mailing` queue, go in the published config under `heartbeats.queues`. See [docs/heartbeats.md](docs/heartbeats.md).
+
 ## Other transports
 
 Bind your own `J87NL\ErrorReporter\Contracts\ErrorTransport` through `error-reporter.transport`, for example to send reports somewhere other than the collector.

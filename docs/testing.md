@@ -13,6 +13,9 @@ Your test suite should not send reports to the collector. Turn the package off i
 Leaving `ERROR_REPORTER_ENDPOINT` or `ERROR_REPORTER_KEY` empty in your test environment has the
 same effect for server errors: the default transport then queues nothing.
 
+[Heartbeats](heartbeats.md) only run from the scheduler, so a test suite never pings them. To keep
+them out of `schedule:list` in tests as well, set `ERROR_REPORTER_HEARTBEATS_ENABLED` to `false`.
+
 ## Asserting that an error is reported
 
 With the package enabled and an endpoint and key set, fake the queue and assert the

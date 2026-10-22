@@ -64,3 +64,18 @@ This creates `config/error-reporter.php`. See [Configuration](configuration.md) 
 ## 5. Browser errors (optional)
 
 To report errors from your Vue front-end as well, follow [Vue Usage](browser-errors.md).
+
+## 6. Heartbeats (optional)
+
+To let the collector watch your scheduler and queue workers, create the heartbeats in the collector's
+admin and add their keys and tokens to `.env`:
+
+```dotenv
+ERROR_REPORTER_HEARTBEATS_ENABLED=true
+ERROR_REPORTER_SCHEDULER_HEARTBEAT_KEY=shop-scheduler
+ERROR_REPORTER_SCHEDULER_HEARTBEAT_TOKEN=hb_...
+ERROR_REPORTER_QUEUE_HEARTBEAT_KEY=shop-queue
+ERROR_REPORTER_QUEUE_HEARTBEAT_TOKEN=hb_...
+```
+
+The scheduler must run `schedule:run` every minute. See [Heartbeats](heartbeats.md).

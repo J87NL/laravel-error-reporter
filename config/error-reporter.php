@@ -46,4 +46,26 @@ return [
 
     'ignore' => [],
 
+    'heartbeats' => [
+        'enabled' => (bool) env('ERROR_REPORTER_HEARTBEATS_ENABLED', false),
+
+        'endpoint' => env('ERROR_REPORTER_HEARTBEAT_ENDPOINT'),
+
+        'timeout' => 3,
+
+        'scheduler' => [
+            'key' => env('ERROR_REPORTER_SCHEDULER_HEARTBEAT_KEY'),
+            'token' => env('ERROR_REPORTER_SCHEDULER_HEARTBEAT_TOKEN'),
+        ],
+
+        'queues' => [
+            'default' => [
+                'key' => env('ERROR_REPORTER_QUEUE_HEARTBEAT_KEY'),
+                'token' => env('ERROR_REPORTER_QUEUE_HEARTBEAT_TOKEN'),
+                'connection' => env('ERROR_REPORTER_QUEUE_HEARTBEAT_CONNECTION'),
+                'queue' => env('ERROR_REPORTER_QUEUE_HEARTBEAT_QUEUE'),
+            ],
+        ],
+    ],
+
 ];

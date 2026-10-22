@@ -1,7 +1,7 @@
 # Collector API
 
-The package talks to one endpoint on the collector. This page describes what that endpoint accepts
-and how it answers. You only need it when you write your own client, a
+The package reports errors to one endpoint on the collector. This page describes what that endpoint
+accepts and how it answers. The heartbeat endpoint is described in [Heartbeats](heartbeats.md#delivery-and-failures). You only need it when you write your own client, a
 [transport](transports.md) that posts elsewhere, or want to understand a fallback in your log.
 
 ```text

@@ -28,6 +28,11 @@ This creates `config/error-reporter.php`.
 | `max_context_bytes` | | `8192` |
 | `scrub` | | see [Scrub](#scrub) |
 | `ignore` | | `[]` |
+| `heartbeats.enabled` | `ERROR_REPORTER_HEARTBEATS_ENABLED` | `false` |
+| `heartbeats.endpoint` | `ERROR_REPORTER_HEARTBEAT_ENDPOINT` | `null` (derived from `endpoint`) |
+| `heartbeats.timeout` | | `3` |
+| `heartbeats.scheduler` | `ERROR_REPORTER_SCHEDULER_HEARTBEAT_*` | see [Heartbeats](#heartbeats) |
+| `heartbeats.queues` | `ERROR_REPORTER_QUEUE_HEARTBEAT_*` | see [Heartbeats](#heartbeats) |
 
 ---
 
@@ -173,3 +178,41 @@ The default is an empty array. For example:
 Exception classes that are never sent to the collector. Subclasses are ignored too. These exceptions
 are still logged by Laravel as usual; to stop Laravel reporting them at all, use the handler's
 `dontReport` instead. See [What is not reported](server-errors.md#what-is-not-reported).
+
+---
+
+## Heartbeats
+
+```php
+'heartbeats' => [
+    'enabled' => (bool) env('ERROR_REPORTER_HEARTBEATS_ENABLED', false),
+
+    'endpoint' => env('ERROR_REPORTER_HEARTBEAT_ENDPOINT'),
+
+    'timeout' => 3,
+
+    'scheduler' => [
+        'key' => env('ERROR_REPORTER_SCHEDULER_HEARTBEAT_KEY'),
+        'token' => env('ERROR_REPORTER_SCHEDULER_HEARTBEAT_TOKEN'),
+    ],
+
+    'queues' => [
+        'default' => [
+            'key' => env('ERROR_REPORTER_QUEUE_HEARTBEAT_KEY'),
+            'token' => env('ERROR_REPORTER_QUEUE_HEARTBEAT_TOKEN'),
+            'connection' => env('ERROR_REPORTER_QUEUE_HEARTBEAT_CONNECTION'),
+            'queue' => env('ERROR_REPORTER_QUEUE_HEARTBEAT_QUEUE'),
+        ],
+    ],
+],
+```
+
+| Key | Description |
+|---|---|
+| `enabled` | `true` schedules the heartbeats. Independent of `enabled` for error reporting |
+| `endpoint` | The heartbeat address without the key. Empty swaps the trailing `/ingest/errors` of `endpoint` for `/heartbeats`. Without either, nothing is scheduled |
+| `timeout` | The connect timeout and the request timeout of a ping, in seconds |
+| `scheduler` | The key and token of the scheduler heartbeat |
+| `queues` | One entry per watched queue, keyed by a name. Each has a key, a token and an optional connection and queue |
+
+A heartbeat without a key or a token is skipped. See [Heartbeats](heartbeats.md).
