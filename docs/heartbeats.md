@@ -21,14 +21,14 @@ php artisan schedule:list
 
 The queue job, `J87NL\ErrorReporter\Jobs\PingQueueHeartbeat`, is unique per queue heartbeat. While
 one is still waiting for a worker, the scheduler does not queue another, so a stopped worker does
-not leave a pile of pings behind. The lock lasts at most an hour. The job carries only the name of
-the queue heartbeat; the key and token are read from the config when it runs, so they never end up
-in the queue.
+not leave a pile of pings behind. The lock lasts at most an hour. The job carries
+the name and the key of the queue heartbeat. The token is read from the config when it runs, so it
+never ends up in the queue.
 
 ## 1. Create the heartbeats in the collector
 
-In the j87.nl admin, open **Monitoring → Heartbeats** and choose **Heartbeat toevoegen** (add
-heartbeat). Create one heartbeat for the scheduler and one per queue you want watched:
+In the j87.nl admin, open **Monitoring → Heartbeats** and choose **Toevoegen** (add). Create one
+heartbeat for the scheduler and one per queue you want watched:
 
 | Field | Scheduler | Queue | Mailing queue (example) |
 |---|---|---|---|
@@ -119,7 +119,7 @@ including `enabled`, `endpoint`, `timeout` and `scheduler`.
 
 ## Delivery and failures
 
-The ping is a `POST` with an empty body and the token as a bearer token, with a timeout of three
+The ping is a JSON `POST` without data, with the token as a bearer token, with a timeout of three
 seconds (`heartbeats.timeout`). It is not retried: the next ping comes five minutes later.
 
 A ping that fails never throws into your app. When the collector cannot be reached or answers with

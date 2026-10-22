@@ -24,11 +24,12 @@ class PingQueueHeartbeat implements ShouldBeUnique, ShouldQueue
 
     public function __construct(
         public readonly string $heartbeat,
+        public readonly string $key,
     ) {}
 
     public function uniqueId(): string
     {
-        return $this->heartbeat;
+        return sprintf('%s:%s', $this->heartbeat, $this->key);
     }
 
     public function displayName(): string

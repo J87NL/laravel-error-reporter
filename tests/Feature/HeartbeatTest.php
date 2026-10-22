@@ -157,7 +157,7 @@ test('every configured queue gets its own job on its own connection and queue, w
 
     Http::assertNothingSent();
 
-    app()->call([new PingQueueHeartbeat('mailing'), 'handle']);
+    app()->call([new PingQueueHeartbeat('mailing', 'shop-mailing-queue'), 'handle']);
 
     Http::assertSent(fn (Request $request): bool => $request->url() === 'https://collector.test/api/heartbeats/shop-mailing-queue'
         && $request->hasHeader('Authorization', 'Bearer hb_mailing_secret'));
@@ -176,13 +176,36 @@ test('a queue heartbeat that is still waiting for a worker is not queued again',
     Queue::assertPushed(PingQueueHeartbeat::class, 1);
 });
 
+test('the lock of a waiting queue heartbeat holds only for its own heartbeat key', function (): void {
+    configureHeartbeats([
+        'scheduler' => [],
+    ]);
+    Queue::fake();
+
+    heartbeatEvents()['error-reporter:queue-heartbeat:default']->run(app());
+
+    configureHeartbeats([
+        'scheduler' => [],
+        'queues' => [
+            'default' => [
+                'key' => 'other-app-queue',
+                'token' => 'hb_other_secret',
+            ],
+        ],
+    ]);
+
+    heartbeatEvents()['error-reporter:queue-heartbeat:default']->run(app());
+
+    Queue::assertPushed(PingQueueHeartbeat::class, 2);
+});
+
 test('a queue heartbeat removed from the config after it was queued does not ping', function (): void {
     configureHeartbeats([
         'queues' => [],
     ]);
     Http::fake();
 
-    app()->call([new PingQueueHeartbeat('default'), 'handle']);
+    app()->call([new PingQueueHeartbeat('default', 'shop-queue'), 'handle']);
 
     Http::assertNothingSent();
 });

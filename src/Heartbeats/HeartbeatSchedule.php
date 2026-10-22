@@ -36,7 +36,7 @@ class HeartbeatSchedule
         }
 
         foreach ($this->config->queues() as $name => $queue) {
-            $job = new PingQueueHeartbeat($name);
+            $job = new PingQueueHeartbeat($name, $queue['key']);
 
             $schedule->job($job, $queue['queue'], $queue['connection'])
                 ->name($job->displayName())
