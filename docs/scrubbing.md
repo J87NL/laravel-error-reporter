@@ -79,7 +79,7 @@ There are two sets of rules, configured under [`redact`](configuration.md#redact
 | A JSON Web Token | `eyJhbGciOi...` | `[scrubbed]` |
 | An opaque string, see below | `def50200a1b2c3d4e5f6...` | `[scrubbed]` |
 
-`Bearer` and `Basic` are matched with a capital only, and only when the value that follows has at
+`Bearer` and `Basic` are matched in any case (`bearer`, `BASIC`), but only when the value that follows has at
 least eight characters and looks like a credential: it has a digit, a symbol such as `-`, `.` or `=`,
 or a lower case letter followed by a capital. `The basic plan` and `Bearer token missing` are left
 alone.
@@ -89,7 +89,10 @@ a word in [`redact.query_parameters`](configuration.md#redact) (`code`, `auth`, 
 `verifier`, `signature`, `apikey`, `sessionid`, `sessid` and `authcode` by default). Parts are split
 on `_`, `-`, `.` and capitals, so `api_key`, `XSRF-TOKEN` and `accessToken` are secret, while
 `author`, `postcode` and `keyword` are not. A word of five or more letters also matches at the end of
-a part, so `accesstoken` and `PHPSESSID` are secret too. The parameter can start the string or follow
+a part, so `accesstoken` and `PHPSESSID` are secret too. A word shorter than five letters, such as
+`key`, `code` or `auth`, only matches the last part (`api_key`, `clientCode`, but not `key_order`), and
+common names that are no secret, such as `status_code`, `error_code`, `postal_code`, `cache_key` and
+`sort_key`, are left alone. The parameter can start the string or follow
 `?`, `&`, `;` or a space, its value may be quoted (`token="..."`), and the value stops at `&`, `#`,
 `;`, a space, a quote or a bracket, and leaves trailing `.`, `!`, `?` and `:` alone. A value after a
 colon, such as `api_key: abc` or JSON's `"token":"abc"`, is not a parameter; the
@@ -131,9 +134,11 @@ ERROR_REPORTER_REDACT_PERSONAL_DATA=true
 ```
 
 The phone rule masks any ten digits that start with `0`, `+31` or `0031`, such as an order number
-`0612345678`. The IBAN rule masks any two capitals followed by two digits and ten to thirty capitals
-and digits, or by groups of four of which every group after the first has a digit. Words in capitals
-after an IBAN are left alone. An IBAN in lower case, such as `nl91abna0417164300`, is not masked.
+`0612345678`, but not digits that run on after a `.`, `,` or `:`, so a date with a time
+(`05-10-2026 12:30:00`) and a fraction (`0.0123456789`) stay. The IBAN rule masks two capitals followed
+by two digits and ten to thirty capitals and digits, or by groups of four of which every group after
+the first has a digit, when the IBAN checksum (mod 97) is valid. Words in capitals after an IBAN are
+left alone. An IBAN in lower case, such as `nl91abna0417164300`, is not masked.
 An e-mail address in a URL is masked on its own, so `/users/jan@example.com/edit` is reported as
 `/users/[scrubbed]/edit`.
 
@@ -155,7 +160,8 @@ skipped, with one warning in the log when the rules are loaded.
 When a value cannot be processed, for example because a pattern backtracks too much, the whole value
 is replaced by `[scrubbed]`. The built-in rules run in linear time. Before they run, a message longer
 than [`max_message_length`](configuration.md#limits) plus 1024 characters is cut to that length, and
-the word the cut ends in is dropped, so no part of a secret slips through. A context larger than
+the word the cut ends in is dropped, so no part of a secret slips through. A message without a space in
+that range, such as a long JSON or base64 string, is cut at that length as it is. A context larger than
 [`max_context_bytes`](configuration.md#limits) is dropped, so a huge value never reaches the rules.
 
 ### Using the rules elsewhere
@@ -171,6 +177,22 @@ app(ValueRedactor::class)->redact($payload);
 
 `redact()` takes a string or an array of any depth and returns it with every string key and value
 redacted.
+
+### Moving from your own redactor
+
+An app that redacted values itself on top of this package, with a subclass of `ErrorReport`, a
+wrapper around the transport or a class that recomputes the fingerprint, drops that code after
+updating to 0.3:
+
+1. Remove the subclass, wrapper or container binding, and the code that recomputes the fingerprint:
+   the package now redacts before it computes the fingerprint.
+2. Masked e-mail addresses, IBANs or phone numbers: set `ERROR_REPORTER_REDACT_PERSONAL_DATA=true`.
+3. Move extra secret parameter names to [`redact.query_parameters`](configuration.md#redact), and any
+   other regular expression to `redact.patterns`. Publish the config again, or add the `redact`
+   section by hand, to change them.
+4. Remove the tests of the old class, or point them at `ValueRedactor`.
+
+Errors group once more after the update, because the masked values and the fingerprint change.
 
 ## What is not scrubbed
 

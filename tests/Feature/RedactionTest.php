@@ -169,6 +169,14 @@ test('secret values are masked in the message by default', function (string $mes
         'Key hub_live_51H8xKqLmNoPqRsTuVwXyZ0123456789 rejected',
         'Key [scrubbed] rejected',
     ],
+    'credential with a lower case scheme' => [
+        'Header authorization: bearer s3cr3tT0kenValue99 rejected',
+        'Header authorization: bearer [scrubbed] rejected',
+    ],
+    'parameter whose last part is a short word' => [
+        'Fetch https://api.test/v1?api_key=abc&clientCode=def failed',
+        'Fetch https://api.test/v1?api_key=[scrubbed]&clientCode=[scrubbed] failed',
+    ],
 ]);
 
 test('ordinary values are left alone by the secret rules', function (string $message): void {
@@ -195,6 +203,8 @@ test('ordinary values are left alone by the secret rules', function (string $mes
     'the word bearer' => ['Bearer authentication failed for Bearer token'],
     'an e-mail address' => ['Confirmation to jan.jansen@example.com failed'],
     'a phone number' => ['Call 06-12345678 failed'],
+    'codes and keys that are no secret' => ['Request failed with status_code=500 error_code=E42 postal_code=3011AB sort_key=name statusCode=404'],
+    'a short word before the last part' => ['Fetch https://api.test/v1?code_style=psr12&key_order=asc failed'],
 ]);
 
 test('personal data is only masked when the app opts in', function (string $message, string $expected): void {
@@ -267,6 +277,9 @@ test('personal data leaves numbers that are not phone numbers alone', function (
 })->with([
     'an eight digit number' => ['Order 12345678 failed'],
     'a number of eleven digits' => ['Batch 06123456789 failed'],
+    'a dutch date with a time' => ['Import of 05-10-2026 12:30:00 failed'],
+    'a decimal fraction' => ['Ratio 0.0123456789 out of range'],
+    'an iban with a wrong checksum' => ['Account NL92ABNA0417164300 rejected'],
 ]);
 
 test('personal data is masked while the secret rules are off', function (): void {
@@ -437,6 +450,14 @@ test('a secret near the end of a long message is masked before the message is cu
     $message = reportMessage(sprintf('%s def50200a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4', str_repeat('x', 20)));
 
     expect($message)->toBe(sprintf('%s [scrubbed]', str_repeat('x', 20)));
+});
+
+test('a long message without whitespace keeps its start', function (): void {
+    config()->set('error-reporter.max_message_length', 40);
+
+    $message = reportMessage(str_repeat('x', 4000));
+
+    expect($message)->toBe(sprintf('%s...', str_repeat('x', 40)));
 });
 
 test('the rules run in linear time on long input', function (string $input): void {

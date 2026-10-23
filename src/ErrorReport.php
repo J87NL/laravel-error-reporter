@@ -13,9 +13,6 @@ class ErrorReport
 {
     private const int MAX_CONTEXT_DEPTH = 8;
 
-    /**
-     * Room left for a secret that straddles the cut, so it is still recognised as a whole.
-     */
     private const int REDACTION_MARGIN = 1024;
 
     private readonly ValueRedactor $redactor;
@@ -95,18 +92,14 @@ class ErrorReport
         return mb_scrub($message, 'UTF-8');
     }
 
-    /**
-     * Masks the message, then cuts it. A long message is first cut to a margin past the limit, without
-     * the word the margin ends in, so a secret is never split before the rules see it, and it always gets
-     * the marker of a cut message.
-     */
     private function limitedMessage(string $message): string
     {
         $maxLength = max(0, (int) config('error-reporter.max_message_length', 2000));
         $isCut = mb_strlen($message) > $maxLength + self::REDACTION_MARGIN;
 
         if ($isCut) {
-            $message = preg_match('/^.*\s/su', mb_substr($message, 0, $maxLength + self::REDACTION_MARGIN), $match) === 1 ? $match[0] : '';
+            $window = mb_substr($message, 0, $maxLength + self::REDACTION_MARGIN);
+            $message = preg_match('/^.*\s/su', $window, $match) === 1 && mb_strlen($match[0]) > $maxLength ? $match[0] : $window;
         }
 
         $redacted = $this->redactor->redactString($message);

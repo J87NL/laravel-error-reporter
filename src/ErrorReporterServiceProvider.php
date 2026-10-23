@@ -73,8 +73,6 @@ class ErrorReporterServiceProvider extends ServiceProvider
     }
 
     /**
-     * Logs each pattern that is not a valid regular expression once, when the redactor is built.
-     *
      * @param  list<string>  $patterns
      * @return list<string>
      */

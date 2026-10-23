@@ -8,9 +8,10 @@ All notable changes to this package are documented here. The format follows [Kee
 
 - Value redaction in the message, the URL and every string key and value in the context, before the message is cut and before the fingerprint is computed. Errors that differ only in a masked value now share a fingerprint.
 - Secret rules, on by default (`ERROR_REPORTER_REDACT_SECRETS`): `Bearer` and `Basic` credentials, secret parameters (the `scrub` words plus `redact.query_parameters`), passwords in URLs, `base64:` keys, JSON Web Tokens and opaque strings of 32 or more characters. UUIDs, migration names, slugs, class names and compiled views are left alone.
-- Personal data rules, opt-in (`ERROR_REPORTER_REDACT_PERSONAL_DATA`): e-mail addresses, IBANs, also spaced and foreign, and Dutch phone numbers.
+- Personal data rules, opt-in (`ERROR_REPORTER_REDACT_PERSONAL_DATA`): e-mail addresses, IBANs with a valid checksum, also spaced and foreign, and Dutch phone numbers.
 - Own regular expressions through `redact.patterns`. An invalid pattern is skipped and logged once.
 - `ValueRedactor` in the container, so a collector can apply the same rules to the reports it receives.
+- An upgrade section for apps that redacted values themselves: [Moving from your own redactor](docs/scrubbing.md#moving-from-your-own-redactor).
 
 ### Changed
 
