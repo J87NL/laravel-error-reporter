@@ -180,6 +180,8 @@ test('secret values are masked in the message by default', function (string $mes
 ]);
 
 test('ordinary values are left alone by the secret rules', function (string $message): void {
+    config()->set('error-reporter.redact.personal_data', false);
+
     expect(reportMessage($message))->toBe($message);
 })->with([
     'a long class name without digits' => ['Class App\\Listeners\\RegisterTicketAvailabilityNotificationsListener not found'],
@@ -207,14 +209,14 @@ test('ordinary values are left alone by the secret rules', function (string $mes
     'a short word before the last part' => ['Fetch https://api.test/v1?code_style=psr12&key_order=asc failed'],
 ]);
 
-test('personal data is only masked when the app opts in', function (string $message, string $expected): void {
-    expect(reportMessage($message))->toBe($message);
+test('personal data is masked by default and kept when the app turns it off', function (string $message, string $expected): void {
+    expect(reportMessage($message))->toBe($expected);
 
     app()->forgetInstance(ErrorReporter::class);
     app()->forgetInstance(ValueRedactor::class);
-    config()->set('error-reporter.redact.personal_data', true);
+    config()->set('error-reporter.redact.personal_data', false);
 
-    expect(reportMessage($message))->toBe($expected);
+    expect(reportMessage($message))->toBe($message);
 })->with([
     'e-mail address' => [
         'Bevestiging aan piet@example.nl mislukt',

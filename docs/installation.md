@@ -53,7 +53,7 @@ ERROR_REPORTER_QUEUE=errors
 ## 4. Publish the config (optional)
 
 The environment variables cover the common settings, including `ERROR_REPORTER_REDACT_PERSONAL_DATA`
-to mask e-mail addresses, IBANs and phone numbers. To change the scrub list, the redaction rules, the
+to stop masking e-mail addresses, IBANs and phone numbers. To change the scrub list, the redaction rules, the
 ignored exceptions or the limits, publish the config file:
 
 ```bash

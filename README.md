@@ -37,7 +37,7 @@ php artisan vendor:publish --tag=error-reporter-config
 | `APP_RELEASE`                         | `release`                    | none                  |
 | `APP_ENV`                             | `environment`                | `production`          |
 | `ERROR_REPORTER_REDACT_SECRETS`       | `redact.secrets`             | `true`                |
-| `ERROR_REPORTER_REDACT_PERSONAL_DATA` | `redact.personal_data`       | `false`               |
+| `ERROR_REPORTER_REDACT_PERSONAL_DATA` | `redact.personal_data`       | `true`                |
 |                                       | `timeout` (seconds)          | `2`                   |
 |                                       | `max_frames`                 | `30`                  |
 |                                       | `max_message_length`         | `2000`                |
@@ -76,7 +76,7 @@ Route parameters whose name matches the same list are masked in the reported URL
 Values are masked too, in the message, the URL and every string key and value in the context, before the message is cut and before the fingerprint is computed, so errors that differ only in a masked value are grouped together:
 
 - **Secrets, on by default** (`ERROR_REPORTER_REDACT_SECRETS`): `Bearer` and `Basic` credentials, parameters with a `scrub` word or one of `redact.query_parameters` (`code`, `auth`, `session`, `verifier`, `signature`, `apikey`, `sessionid`, `sessid`, `authcode`) as a part of their name, passwords in URLs, `base64:` keys, JSON Web Tokens, and opaque strings of 32 or more characters. UUIDs, migration names, slugs, class names and compiled views stay readable.
-- **Personal data, opt-in** (`ERROR_REPORTER_REDACT_PERSONAL_DATA=true`): e-mail addresses, IBANs (also spaced and foreign) and Dutch phone numbers.
+- **Personal data, on by default** (`ERROR_REPORTER_REDACT_PERSONAL_DATA=false` turns it off): e-mail addresses, IBANs (also spaced and foreign) and Dutch phone numbers.
 - **Your own regular expressions** in `redact.patterns`.
 
 `J87NL\ErrorReporter\ValueRedactor` holds these rules, so a collector can apply them to what it receives. See [docs/scrubbing.md](docs/scrubbing.md).

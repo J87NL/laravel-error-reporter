@@ -28,7 +28,7 @@ This creates `config/error-reporter.php`.
 | `max_context_bytes` | | `8192` |
 | `scrub` | | see [Scrub](#scrub) |
 | `redact.secrets` | `ERROR_REPORTER_REDACT_SECRETS` | `true` |
-| `redact.personal_data` | `ERROR_REPORTER_REDACT_PERSONAL_DATA` | `false` |
+| `redact.personal_data` | `ERROR_REPORTER_REDACT_PERSONAL_DATA` | `true` |
 | `redact.query_parameters` | | see [Redact](#redact) |
 | `redact.patterns` | | `[]` |
 | `ignore` | | `[]` |
@@ -178,7 +178,7 @@ URL and the context with one of these words as a part of their name are masked a
 'redact' => [
     'secrets' => (bool) env('ERROR_REPORTER_REDACT_SECRETS', true),
 
-    'personal_data' => (bool) env('ERROR_REPORTER_REDACT_PERSONAL_DATA', false),
+    'personal_data' => (bool) env('ERROR_REPORTER_REDACT_PERSONAL_DATA', true),
 
     'query_parameters' => ValueRedactor::DEFAULT_QUERY_PARAMETERS,
 

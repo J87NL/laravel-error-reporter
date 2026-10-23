@@ -119,7 +119,7 @@ separate parts, and a standard
 base64 secret with `+`, `/` or `=` outside a `base64:` key, which the rule only masks in pieces. Add a
 [pattern](#your-own-patterns) for those when your app has them.
 
-### Personal data (opt-in)
+### Personal data (on by default)
 
 | Rule | Example |
 |---|---|
@@ -127,10 +127,10 @@ base64 secret with `+`, `/` or `=` outside a `base64:` key, which the rule only 
 | IBANs, also spaced in groups of four and from other countries | `NL91ABNA0417164300`, `BE68 5390 0754 7034` |
 | Dutch phone numbers, mobile and landline, with `0`, `+31`, `+31 (0)` or `0031`, with or without spaces and dashes | `06-12345678`, `+31 (0)6 1234 5678`, `010-1234567` |
 
-Turn these on for an app that handles customer data:
+These are on by default. Turn them off only for an app without customer data where the addresses help debugging:
 
 ```dotenv
-ERROR_REPORTER_REDACT_PERSONAL_DATA=true
+ERROR_REPORTER_REDACT_PERSONAL_DATA=false
 ```
 
 The phone rule masks any ten digits that start with `0`, `+31` or `0031`, such as an order number
@@ -186,7 +186,7 @@ updating to 0.3:
 
 1. Remove the subclass, wrapper or container binding, and the code that recomputes the fingerprint:
    the package now redacts before it computes the fingerprint.
-2. Masked e-mail addresses, IBANs or phone numbers: set `ERROR_REPORTER_REDACT_PERSONAL_DATA=true`.
+2. Masked e-mail addresses, IBANs or phone numbers: nothing to do, that is the default from 0.3.1.
 3. Move extra secret parameter names to [`redact.query_parameters`](configuration.md#redact), and any
    other regular expression to `redact.patterns`. Publish the config again, or add the `redact`
    section by hand, to change them.

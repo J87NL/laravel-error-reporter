@@ -4,6 +4,12 @@ All notable changes to this package are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-23
+
+### Changed
+
+- Personal data redaction (e-mail addresses, IBANs, Dutch phone numbers) is now on by default. Set `ERROR_REPORTER_REDACT_PERSONAL_DATA=false` to turn it off. Errors whose message held such a value group under a new fingerprint once after the update.
+
 ## [0.3.0] - 2026-10-23
 
 ### Added
@@ -49,7 +55,8 @@ All notable changes to this package are documented here. The format follows [Kee
 - Replaces a scrubbed context larger than `max_context_bytes` by `{"truncated": true}` before it leaves the app.
 - Logs the scrubbed report when the transport fails, so the report is not lost.
 
-[Unreleased]: https://github.com/J87NL/laravel-error-reporter/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/J87NL/laravel-error-reporter/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/J87NL/laravel-error-reporter/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/J87NL/laravel-error-reporter/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/J87NL/laravel-error-reporter/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/J87NL/laravel-error-reporter/compare/v0.1.0...v0.2.0

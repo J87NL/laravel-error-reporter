@@ -12,7 +12,7 @@ shows up once with a count instead of once per occurrence.
    logged as usual.
 2. The package turns the exception into a report: class, message, file, line, a trimmed stack trace,
    route, URL, user id, environment, release and the exception's context. Secrets are masked first,
-   by key and by value; personal data too when you opt in.
+   by key and by value; personal data too, unless you turn that off.
 3. A queued job posts the report to the collector with your server key. When the collector cannot be
    reached, the report goes to the log instead.
 4. In the browser, a small script catches Vue errors, uncaught errors and unhandled promise

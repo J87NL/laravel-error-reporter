@@ -49,7 +49,7 @@ return [
     'redact' => [
         'secrets' => (bool) env('ERROR_REPORTER_REDACT_SECRETS', true),
 
-        'personal_data' => (bool) env('ERROR_REPORTER_REDACT_PERSONAL_DATA', false),
+        'personal_data' => (bool) env('ERROR_REPORTER_REDACT_PERSONAL_DATA', true),
 
         'query_parameters' => ValueRedactor::DEFAULT_QUERY_PARAMETERS,
 
