@@ -4,6 +4,8 @@ All notable changes to this package are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-23
+
 ### Added
 
 - Value redaction in the message, the URL and every string key and value in the context, before the message is cut and before the fingerprint is computed. Errors that differ only in a masked value now share a fingerprint.
@@ -47,7 +49,8 @@ All notable changes to this package are documented here. The format follows [Kee
 - Replaces a scrubbed context larger than `max_context_bytes` by `{"truncated": true}` before it leaves the app.
 - Logs the scrubbed report when the transport fails, so the report is not lost.
 
-[Unreleased]: https://github.com/J87NL/laravel-error-reporter/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/J87NL/laravel-error-reporter/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/J87NL/laravel-error-reporter/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/J87NL/laravel-error-reporter/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/J87NL/laravel-error-reporter/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/J87NL/laravel-error-reporter/releases/tag/v0.1.0
