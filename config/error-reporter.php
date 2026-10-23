@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use J87NL\ErrorReporter\Heartbeats\EnvironmentQueues;
 use J87NL\ErrorReporter\Transports\QueuedHttpTransport;
+use J87NL\ErrorReporter\ValueRedactor;
 
 return [
 
@@ -43,6 +44,16 @@ return [
         'authorization',
         'cookie',
         'key',
+    ],
+
+    'redact' => [
+        'secrets' => (bool) env('ERROR_REPORTER_REDACT_SECRETS', true),
+
+        'personal_data' => (bool) env('ERROR_REPORTER_REDACT_PERSONAL_DATA', false),
+
+        'query_parameters' => ValueRedactor::DEFAULT_QUERY_PARAMETERS,
+
+        'patterns' => [],
     ],
 
     'ignore' => [],

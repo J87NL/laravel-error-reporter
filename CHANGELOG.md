@@ -2,6 +2,23 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Value redaction in the message, the URL and every string key and value in the context, before the message is cut and before the fingerprint is computed. Errors that differ only in a masked value now share a fingerprint.
+- Secret rules, on by default (`ERROR_REPORTER_REDACT_SECRETS`): `Bearer` and `Basic` credentials, secret parameters (the `scrub` words plus `redact.query_parameters`), passwords in URLs, `base64:` keys, JSON Web Tokens and opaque strings of 32 or more characters. UUIDs, migration names, slugs, class names and compiled views are left alone.
+- Personal data rules, opt-in (`ERROR_REPORTER_REDACT_PERSONAL_DATA`): e-mail addresses, IBANs with a valid checksum, also spaced and foreign, and Dutch phone numbers.
+- Own regular expressions through `redact.patterns`. An invalid pattern is skipped and logged once.
+- `ValueRedactor` in the container, so a collector can apply the same rules to the reports it receives.
+- An upgrade section for apps that redacted values themselves: [Moving from your own redactor](docs/scrubbing.md#moving-from-your-own-redactor).
+
+### Changed
+
+- Messages, URLs and context values that match a secret rule are now sent as `[scrubbed]`. Set `ERROR_REPORTER_REDACT_SECRETS=false` for the old behaviour. A published config without the `redact` section keeps working with the defaults.
+- Fingerprints change once for errors whose message contains a value that is now masked, so those errors start a new group in the collector after the upgrade.
+- `ErrorReport` takes an optional `ValueRedactor` as its second constructor argument and falls back to the one in the container, so `new ErrorReport($scrubber)` and subclasses that call `parent::__construct($scrubber)` keep working.
+
 ## [0.2.1] - 2026-10-22
 
 ### Changed

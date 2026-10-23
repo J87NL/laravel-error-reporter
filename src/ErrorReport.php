@@ -13,9 +13,16 @@ class ErrorReport
 {
     private const int MAX_CONTEXT_DEPTH = 8;
 
+    private const int REDACTION_MARGIN = 1024;
+
+    private readonly ValueRedactor $redactor;
+
     public function __construct(
         private readonly Scrubber $scrubber,
-    ) {}
+        ?ValueRedactor $redactor = null,
+    ) {
+        $this->redactor = $redactor ?? app(ValueRedactor::class);
+    }
 
     /**
      * @return array<string, mixed>
@@ -24,7 +31,7 @@ class ErrorReport
     {
         $frames = $this->frames($exception);
         $topFrame = Grouping::topInAppFrame($frames);
-        $message = Str::limit($this->message($exception), (int) config('error-reporter.max_message_length', 2000));
+        $message = $this->limitedMessage($this->message($exception));
 
         return [
             'fingerprint' => Grouping::fingerprint($exception::class, $topFrame, $message),
@@ -35,11 +42,11 @@ class ErrorReport
             'trace' => $frames,
             'route' => $request?->route()?->getName(),
             'method' => $request?->method(),
-            'url' => is_null($request) ? null : $this->url($request),
+            'url' => is_null($request) ? null : $this->redactor->redactString($this->url($request)),
             'user_id' => is_null($userId) ? null : (string) $userId,
             'environment' => (string) config('error-reporter.environment'),
             'release' => $this->stringOrNull(config('error-reporter.release')),
-            'context' => $this->limitedContext($this->scrubber->scrub($this->context($exception))),
+            'context' => $this->limitedContext($this->redactedContext($exception)),
             'occurred_at' => now()->toIso8601String(),
         ];
     }
@@ -85,6 +92,26 @@ class ErrorReport
         return mb_scrub($message, 'UTF-8');
     }
 
+    private function limitedMessage(string $message): string
+    {
+        $maxLength = max(0, (int) config('error-reporter.max_message_length', 2000));
+        $isCut = mb_strlen($message) > $maxLength + self::REDACTION_MARGIN;
+
+        if ($isCut) {
+            $window = mb_substr($message, 0, $maxLength + self::REDACTION_MARGIN);
+            $message = preg_match('/^.*\s/su', $window, $match) === 1 && mb_strlen($match[0]) > $maxLength ? $match[0] : $window;
+        }
+
+        $redacted = $this->redactor->redactString($message);
+        $limited = Str::limit($redacted, $maxLength);
+
+        if ($isCut && mb_strlen($redacted) <= $maxLength) {
+            return sprintf('%s...', rtrim($redacted));
+        }
+
+        return $limited;
+    }
+
     /**
      * @return array<array-key, mixed>
      */
@@ -103,6 +130,16 @@ class ErrorReport
         $plain = json_decode((string) json_encode($context, JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE, self::MAX_CONTEXT_DEPTH), true);
 
         return is_array($plain) ? $plain : [];
+    }
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    private function redactedContext(Throwable $exception): array
+    {
+        $context = $this->redactor->redact($this->limitedContext($this->scrubber->scrub($this->context($exception))));
+
+        return is_array($context) ? $context : [];
     }
 
     /**

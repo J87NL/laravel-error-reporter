@@ -45,19 +45,6 @@ class ExceptionWithContext extends RuntimeException
     }
 }
 
-function capturedReport(): array
-{
-    $report = null;
-
-    Queue::assertPushed(SendErrorReport::class, function (SendErrorReport $job) use (&$report): bool {
-        $report = $job->report;
-
-        return true;
-    });
-
-    return $report;
-}
-
 test('an unhandled exception is queued with the fields the collector needs and nothing from the query string', function (): void {
     Queue::fake();
     Route::get('orders/{order}', fn (): never => throw new RuntimeException('Order 42 could not be found'))->name('orders.show');
