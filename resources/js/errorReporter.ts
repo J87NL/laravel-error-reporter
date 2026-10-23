@@ -6,6 +6,8 @@ export type ErrorReporterOptions = {
     release?: string | null;
     environment?: string | null;
     maxReports?: number;
+    networkErrorThreshold?: number;
+    networkErrorWindowMs?: number;
 };
 
 const MAX_MESSAGE_LENGTH = 2000;
@@ -17,6 +19,17 @@ const IGNORED_MESSAGES = ['Script error.', 'Script error'];
 const SECRET_SEGMENT = /^[A-Za-z0-9_-]{32,}$/;
 
 const MASK = '[scrubbed]';
+
+const NETWORK_ERROR_CLASSES = ['HttpNetworkError'];
+
+const NETWORK_ERROR_MESSAGES = [
+    'Failed to fetch',
+    'Load failed',
+    'NetworkError when attempting to fetch resource.',
+    'Network request failed',
+    'Network Error',
+    'Network error',
+];
 
 type Reporter = (error: unknown, source: string) => void;
 
@@ -69,6 +82,45 @@ function stringify(value: unknown): string {
     return Object.prototype.toString.call(value);
 }
 
+export function networkErrorKind(described: BrowserError): string | null {
+    if (NETWORK_ERROR_CLASSES.includes(described.exceptionClass)) {
+        return described.exceptionClass;
+    }
+
+    if (
+        ['TypeError', 'AxiosError', 'Error'].includes(
+            described.exceptionClass,
+        ) &&
+        NETWORK_ERROR_MESSAGES.some((message) =>
+            described.message.startsWith(message),
+        )
+    ) {
+        return `${described.exceptionClass}:network`;
+    }
+
+    return null;
+}
+
+export function createNetworkErrorGate(
+    threshold: number,
+    windowMs: number,
+    now: () => number = () => Date.now(),
+): (kind: string) => boolean {
+    const seen = new Map<string, number[]>();
+
+    return (kind) => {
+        const moment = now();
+        const recent = (seen.get(kind) ?? []).filter(
+            (earlier) => moment - earlier < windowMs,
+        );
+
+        recent.push(moment);
+        seen.set(kind, recent);
+
+        return recent.length >= threshold;
+    };
+}
+
 function currentAddress(): string {
     const path = window.location.pathname
         .split('/')
@@ -99,11 +151,21 @@ export function installErrorReporter(
 
     const maxReports = options.maxReports ?? 10;
     const reported = new Set<string>();
+    const isRepeatedNetworkError = createNetworkErrorGate(
+        Math.max(1, options.networkErrorThreshold ?? 3),
+        options.networkErrorWindowMs ?? 60000,
+    );
 
     const send = (error: unknown, source: string): void => {
         const described = describe(error);
 
         if (IGNORED_MESSAGES.includes(described.message)) {
+            return;
+        }
+
+        const networkKind = networkErrorKind(described);
+
+        if (networkKind !== null && !isRepeatedNetworkError(networkKind)) {
             return;
         }
 

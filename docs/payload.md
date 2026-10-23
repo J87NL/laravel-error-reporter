@@ -9,6 +9,7 @@ is what the [transport](transports.md) receives and what the queued job posts to
 |---|---|---|
 | `fingerprint` | string | A SHA-256 hash that groups the same error, see [Fingerprint](#fingerprint) |
 | `exception_class` | string | The exception's class name |
+| `exception_code` | int, string or null | The exception's `getCode()`, or `null` when it is `0`. A string code, such as a SQLSTATE, is cut to 50 characters |
 | `message` | string | The message, [redacted](scrubbing.md#values) and cut to [`max_message_length`](configuration.md#limits) |
 | `file` | string | The file the exception was thrown in, relative to the project root (absolute when outside it) |
 | `line` | int | The line the exception was thrown on |
@@ -16,6 +17,9 @@ is what the [transport](transports.md) receives and what the queued job posts to
 | `route` | string or null | The name of the current route |
 | `method` | string or null | The HTTP method |
 | `url` | string or null | The URL without the query string, with secret route parameters and [values](scrubbing.md#values) masked |
+| `referrer` | string or null | The `Referer` header without its query string and hash, with [values](scrubbing.md#values) masked, cut to 2048 characters |
+| `ip` | string or null | The client address, masked by default, see [Client address](#client-address) |
+| `request_body` | array or null | The request input, scrubbed and redacted, see [Request body](#request-body) |
 | `user_id` | string or null | The id of the user on the default guard, as a string |
 | `environment` | string | The [environment](configuration.md#release-and-environment) |
 | `release` | string or null | The [release](configuration.md#release-and-environment) |
@@ -28,6 +32,7 @@ An example (the fingerprint is shortened):
 {
     "fingerprint": "3f1c...e9a0",
     "exception_class": "RuntimeException",
+    "exception_code": null,
     "message": "Order 42 could not be found",
     "file": "app/Http/Controllers/OrderController.php",
     "line": 31,
@@ -43,6 +48,12 @@ An example (the fingerprint is shortened):
     "route": "orders.show",
     "method": "GET",
     "url": "https://shop.test/orders/42",
+    "referrer": "https://shop.test/orders",
+    "ip": "203.0.113.0",
+    "request_body": {
+        "quantity": 2,
+        "password": "[scrubbed]"
+    },
     "user_id": "7",
     "environment": "production",
     "release": "abc1234",
@@ -122,6 +133,41 @@ class PaymentFailed extends RuntimeException
     }
 }
 ```
+
+## Request body
+
+The request input is sent, not the raw body: the form fields of a form post, or the decoded JSON of a
+JSON request. The query string is not part of it, just as it is not part of the URL. Before it leaves
+the app:
+
+1. Every key that contains a [`scrub`](configuration.md#scrub) word is masked, at any depth, ignoring
+   case.
+2. The [value rules](scrubbing.md#values) mask secrets and personal data in the remaining string keys
+   and values.
+3. An uploaded file is sent as its name, size and type only, for example
+   `{"name": "invoice.pdf", "size": 31, "mime": "application/pdf"}`. Its contents never leave the app.
+4. A body larger than [`max_request_body_bytes`](configuration.md#request-body) (16 KB) as JSON, or
+   nested deeper than eight levels, or that cannot be encoded as JSON, is sent as `{"truncated": true}`.
+
+A request without input sends `null`. The body is never sent for the paths and route names in
+[`request_body_exclude`](configuration.md#request-body): by default the login, registration,
+password and two-factor routes of Laravel Fortify and the starter kits. Set
+`ERROR_REPORTER_INCLUDE_REQUEST_BODY=false` to never send it.
+
+## Client address
+
+The address comes from `$request->ip()`, so it respects the trusted proxies of your app. With
+[`ip`](configuration.md#client-address) set to:
+
+| Mode | Sends |
+|---|---|
+| `masked` (default) | IPv4 with the last part zeroed (`203.0.113.77` → `203.0.113.0`), IPv6 cut to its first 48 bits (`2001:db8:85a3::`) |
+| `full` | The address as it is |
+| `off` | `null` |
+
+An IPv4 address written as IPv6 (`::ffff:203.0.113.77`) is masked as IPv4. The collector can mask
+further: it applies the mode set for the app there, when that is stricter. `J87NL\ErrorReporter\IpMode`
+holds the rule, so a collector can use the same one.
 
 ## Fingerprint
 

@@ -17,7 +17,7 @@ ERROR_REPORTER_BROWSER_KEY=pub_...
 APP_RELEASE=
 ```
 
-`APP_RELEASE` is the git SHA of the deployed release. While the endpoint or the server key is empty, the default transport queues and sends nothing.
+`APP_RELEASE` is the release of the deploy; set it with the [`AppRelease` helper](docs/deploying.md). While the endpoint or the server key is empty, the default transport queues and sends nothing.
 
 To change more than the environment variables, publish the config:
 
@@ -38,10 +38,14 @@ php artisan vendor:publish --tag=error-reporter-config
 | `APP_ENV`                             | `environment`                | `production`          |
 | `ERROR_REPORTER_REDACT_SECRETS`       | `redact.secrets`             | `true`                |
 | `ERROR_REPORTER_REDACT_PERSONAL_DATA` | `redact.personal_data`       | `true`                |
+| `ERROR_REPORTER_IP`                   | `ip`                         | `masked`              |
+| `ERROR_REPORTER_INCLUDE_REQUEST_BODY` | `include_request_body`       | `true`                |
 |                                       | `timeout` (seconds)          | `2`                   |
 |                                       | `max_frames`                 | `30`                  |
 |                                       | `max_message_length`         | `2000`                |
 |                                       | `max_context_bytes`          | `8192`                |
+|                                       | `max_request_body_bytes`     | `16384`               |
+|                                       | `request_body_exclude`       | Fortify auth routes   |
 |                                       | `scrub`                      | see below             |
 |                                       | `redact.query_parameters`    | see below             |
 |                                       | `redact.patterns`            | `[]`                  |
@@ -52,9 +56,11 @@ php artisan vendor:publish --tag=error-reporter-config
 
 The package hooks into the exception handler. Every reported exception is still logged as usual; the package also queues one job that posts these fields to the collector:
 
-- fingerprint, exception class, message, file and line;
+- fingerprint, exception class, exception code (when not `0`), message, file and line;
 - a trimmed stack trace, each frame marked in-app or vendor;
-- route, method, URL without the query string, user id, environment and release;
+- route, method, URL and referrer without the query string, user id, environment and release;
+- the client address, masked by default (`ERROR_REPORTER_IP`: `masked` zeroes the last part of an IPv4 address and cuts IPv6 to 48 bits, `full` sends it as it is, `off` sends nothing). It comes from `$request->ip()`, so trusted proxies are respected;
+- the request input (form fields or JSON, not the query string), with sensitive keys masked at any depth and the value rules applied, uploaded files as name, size and type only, and `{"truncated": true}` above `max_request_body_bytes`. Never for the paths and route names in `request_body_exclude`, by default the Fortify login, registration, password and two-factor routes. `ERROR_REPORTER_INCLUDE_REQUEST_BODY=false` turns it off;
 - the exception's `context()`, replaced by `{"truncated": true}` when its JSON is larger than `max_context_bytes`.
 
 A `QueryException` is sent with its SQLSTATE code and its SQL, without the bindings and without the driver's message, which can contain the bound values.
@@ -71,9 +77,9 @@ Exceptions that the handler does not report never reach the package: exceptions 
 
 Before anything leaves the app, every key containing `password`, `token`, `secret`, `authorization`, `cookie` or `key` is replaced by `[scrubbed]`, at any depth. The match is a substring match, so `key` also masks keys like `monkey` and `primary_key`. Change the list in `error-reporter.scrub`.
 
-Route parameters whose name matches the same list are masked in the reported URL.
+Route parameters whose name matches the same list are masked in the reported URL. The same keys are masked in the request input.
 
-Values are masked too, in the message, the URL and every string key and value in the context, before the message is cut and before the fingerprint is computed, so errors that differ only in a masked value are grouped together:
+Values are masked too, in the message, the URL, the referrer and every string key and value in the context and the request input, before the message is cut and before the fingerprint is computed, so errors that differ only in a masked value are grouped together:
 
 - **Secrets, on by default** (`ERROR_REPORTER_REDACT_SECRETS`): `Bearer` and `Basic` credentials, parameters with a `scrub` word or one of `redact.query_parameters` (`code`, `auth`, `session`, `verifier`, `signature`, `apikey`, `sessionid`, `sessid`, `authcode`) as a part of their name, passwords in URLs, `base64:` keys, JSON Web Tokens, and opaque strings of 32 or more characters. UUIDs, migration names, slugs, class names and compiled views stay readable.
 - **Personal data, on by default** (`ERROR_REPORTER_REDACT_PERSONAL_DATA=false` turns it off): e-mail addresses, IBANs (also spaced and foreign) and Dutch phone numbers.
@@ -84,6 +90,8 @@ Values are masked too, in the message, the URL and every string key and value in
 ## Browser errors
 
 `resources/js/errorReporter.ts` hooks `app.config.errorHandler`, `error` and `unhandledrejection`. It posts with the public browser key, at most ten distinct errors per page load. Path segments of 32 or more letters, digits, `-` and `_`, such as reset tokens, are masked in the reported URL. A rejection with something other than an `Error` is sent as its `message` property, a number or boolean as its value, and anything else only as its type, so objects are never sent whole. Installing it twice on the same app does nothing.
+
+A network error (Inertia's `HttpNetworkError`, a failed `fetch`, an XHR `Network Error`) is only sent when the same kind happens three times within 60 seconds in one page load, so one dropped request during a deploy is ignored. Change this with the `networkErrorThreshold` and `networkErrorWindowMs` options. The script sends no client address and no user agent: the collector takes the address from the report request and applies the app's address setting, and keeps only the browser family and major version, such as `Safari 18`.
 
 Point an alias at the script in `vite.config.ts`:
 
@@ -170,6 +178,21 @@ ERROR_REPORTER_MAILING_HEARTBEAT_TOKEN=hb_...
 
 Queues under `heartbeats.queues` in a published config still work and win on a name clash. See [docs/heartbeats.md](docs/heartbeats.md).
 
+## Deploying
+
+`J87NL\ErrorReporter\Deploy\AppRelease` builds the release (`<release name>-<short sha>[-dirty]`) and writes `APP_RELEASE` into the `.env` contents. It is plain PHP, so `deploy.php` loads it without Laravel:
+
+```php
+use J87NL\ErrorReporter\Deploy\AppRelease;
+
+require_once __DIR__.'/vendor/j87nl/laravel-error-reporter/src/Deploy/AppRelease.php';
+
+$release = AppRelease::name((string) get('release_name'), trim($commit), $isDirty);
+file_put_contents(__DIR__.'/.env', AppRelease::writeInto($environment, $release));
+```
+
+See [docs/deploying.md](docs/deploying.md).
+
 ## Other transports
 
 Bind your own `J87NL\ErrorReporter\Contracts\ErrorTransport` through `error-reporter.transport`, for example to send reports somewhere other than the collector.
@@ -179,4 +202,5 @@ Bind your own `J87NL\ErrorReporter\Contracts\ErrorTransport` through `error-repo
 ```bash
 composer install
 vendor/bin/pest
+node --test 'tests/js/*.test.ts'
 ```

@@ -36,6 +36,7 @@ and from a browser report:
 | Field | Accepted from server | Accepted from browser | Limit |
 |---|---|---|---|
 | `exception_class` | yes | yes | Required, a non-empty string. Cut to 250 characters |
+| `exception_code` | yes | | An integer or a string, cut to 50 characters. `0` is dropped |
 | `message` | yes | yes | Cut to 2000 characters, followed by `...` when cut |
 | `trace` | yes | | The first 50 frames |
 | `stack` | | yes | A stack string. The first 50 lines are parsed into frames |
@@ -44,6 +45,9 @@ and from a browser report:
 | `route` | yes | | Cut to 255 characters |
 | `method` | yes | | Cut to 10 characters |
 | `url` | yes | yes | Query string and hash removed, cut to 2048 characters |
+| `referrer` | yes | | Query string and hash removed, redacted, cut to 2048 characters |
+| `ip` | yes | | A valid IPv4 or IPv6 address, otherwise dropped. See below |
+| `request_body` | yes | | An object. See below |
 | `user_id` | yes | | Cut to 255 characters |
 | `environment` | yes | yes | Cut to 50 characters |
 | `release` | yes | yes | Cut to 100 characters |
@@ -60,6 +64,18 @@ Some details:
 - `context` is scrubbed first: the collector masks sensitive keys again. When the scrubbed context
   is larger than 8192 bytes as JSON, it is stored as `{"truncated": true}`. An empty or missing
   context is stored as `null`.
+- `request_body` is scrubbed again, like `context`. When it is larger than 16384 bytes as JSON, it is
+  stored as `{"truncated": true}`.
+- The client address follows the address setting of the app on the collector: `masked` (the
+  default for a new app), `full` or `off`. For a browser report the collector takes the address of
+  the report request itself, behind its own trusted proxies. For a server report it takes the `ip`
+  field and masks it when the app's setting is `masked`, or drops it when it is `off`. Masking an
+  address that is already masked changes nothing, so the stricter of the two settings wins.
+- For a browser report the collector stores the browser family and major version from the
+  `User-Agent` header of the report request, such as `Safari 18`, `Chrome 141` or `Other`. The full
+  user agent is not stored. Server reports have no browser.
+- Fields the collector does not know are ignored, so a newer package can report to an older
+  collector: the new fields are dropped until the collector is updated.
 - `occurred_at` is not clamped: a missing or invalid value, a moment in the future, or one older
   than 24 hours is replaced by the time the collector received the report.
 - The collector computes the fingerprint itself, from its own trimmed and cut copy of the report,

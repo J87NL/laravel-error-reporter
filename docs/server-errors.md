@@ -51,9 +51,10 @@ try {
 
 ## Requests, users and the console
 
-The report holds the route name, method and URL of the current request, and the id of the user on
-the default guard. For an exception in a queued job or an artisan command there is no route, so
-`route`, `method` and `url` are `null`. When no user is logged in, `user_id` is `null`.
+The report holds the route name, method, URL, referrer, client address and input of the current
+request, and the id of the user on the default guard. For an exception in a queued job or an artisan
+command there is no route, so `route`, `method`, `url`, `referrer`, `ip` and `request_body` are
+`null`. When no user is logged in, `user_id` is `null`.
 
 ## Delivery and fallback
 

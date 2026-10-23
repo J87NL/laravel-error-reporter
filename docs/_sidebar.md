@@ -12,4 +12,5 @@
     - [Configuration](configuration.md)
     - [Transports](transports.md)
     - [Collector API](collector-api.md)
+    - [Deploying](deploying.md)
     - [Testing](testing.md)

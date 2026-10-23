@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use J87NL\ErrorReporter\Heartbeats\EnvironmentQueues;
+use J87NL\ErrorReporter\RequestBody;
 use J87NL\ErrorReporter\Transports\QueuedHttpTransport;
 use J87NL\ErrorReporter\ValueRedactor;
 
@@ -36,6 +37,14 @@ return [
     'max_message_length' => 2000,
 
     'max_context_bytes' => 8192,
+
+    'ip' => env('ERROR_REPORTER_IP', 'masked'),
+
+    'include_request_body' => (bool) env('ERROR_REPORTER_INCLUDE_REQUEST_BODY', true),
+
+    'max_request_body_bytes' => 16384,
+
+    'request_body_exclude' => RequestBody::DEFAULT_EXCLUDE,
 
     'scrub' => [
         'password',

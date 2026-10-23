@@ -36,6 +36,7 @@ class ErrorReport
         return [
             'fingerprint' => Grouping::fingerprint($exception::class, $topFrame, $message),
             'exception_class' => $exception::class,
+            'exception_code' => $this->exceptionCode($exception),
             'message' => $message,
             'file' => $this->relativePath($exception->getFile()),
             'line' => $exception->getLine(),
@@ -43,6 +44,9 @@ class ErrorReport
             'route' => $request?->route()?->getName(),
             'method' => $request?->method(),
             'url' => is_null($request) ? null : $this->redactor->redactString($this->url($request)),
+            'referrer' => is_null($request) ? null : $this->referrer($request),
+            'ip' => is_null($request) ? null : $this->ip($request),
+            'request_body' => is_null($request) ? null : $this->requestBody($request),
             'user_id' => is_null($userId) ? null : (string) $userId,
             'environment' => (string) config('error-reporter.environment'),
             'release' => $this->stringOrNull(config('error-reporter.release')),
@@ -155,6 +159,43 @@ class ErrorReport
         return [
             'truncated' => true,
         ];
+    }
+
+    private function exceptionCode(Throwable $exception): int|string|null
+    {
+        $code = $exception->getCode();
+
+        if ($code === 0 || $code === '' || $code === '0') {
+            return null;
+        }
+
+        return is_string($code) ? Str::limit($code, 50, '') : $code;
+    }
+
+    private function ip(Request $request): ?string
+    {
+        return IpMode::fromConfig(config('error-reporter.ip'))->apply($request->ip());
+    }
+
+    /**
+     * @return array<array-key, mixed>|null
+     */
+    private function requestBody(Request $request): ?array
+    {
+        return (new RequestBody($this->scrubber, $this->redactor))->fromRequest($request);
+    }
+
+    private function referrer(Request $request): ?string
+    {
+        $referrer = $request->headers->get('referer');
+
+        if (! is_string($referrer) || trim($referrer) === '') {
+            return null;
+        }
+
+        $withoutQuery = Str::before(Str::before(trim($referrer), '#'), '?');
+
+        return Str::limit($this->redactor->redactString(mb_scrub($withoutQuery, 'UTF-8')), 2048, '');
     }
 
     private function url(Request $request): string

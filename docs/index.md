@@ -11,7 +11,8 @@ shows up once with a count instead of once per occurrence.
 1. The package hooks into Laravel's exception handler. Every exception the handler reports is still
    logged as usual.
 2. The package turns the exception into a report: class, message, file, line, a trimmed stack trace,
-   route, URL, user id, environment, release and the exception's context. Secrets are masked first,
+   route, URL, referrer, client address, request input, user id, environment, release and the
+   exception's context. Secrets are masked first,
    by key and by value; personal data too, unless you turn that off.
 3. A queued job posts the report to the collector with your server key. When the collector cannot be
    reached, the report goes to the log instead.
@@ -72,4 +73,5 @@ The Vite alias and the other steps are in [Vue Usage](browser-errors.md).
 - [Configuration](configuration.md) - all config keys
 - [Transports](transports.md) - send reports your own way
 - [Collector API](collector-api.md) - what the collector accepts and answers
+- [Deploying](deploying.md) - set `APP_RELEASE` from your deploy script
 - [Testing](testing.md) - keep tests quiet, or assert reports

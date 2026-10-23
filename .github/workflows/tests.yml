@@ -25,3 +25,14 @@ jobs:
         run: composer update --no-interaction --prefer-dist --ansi --with "laravel/framework:^${{ matrix.laravel }}.0"
       - name: Test
         run: vendor/bin/pest
+  browser:
+    name: Browser script (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Test
+        run: node --test 'tests/js/*.test.ts'

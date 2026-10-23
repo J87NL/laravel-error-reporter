@@ -4,6 +4,21 @@ All notable changes to this package are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-23
+
+### Added
+
+- The request input on server reports (`request_body`): form fields or JSON, not the query string. Sensitive keys are masked at any depth and the value rules run over what is left. Uploaded files are sent as name, size and type only. A body larger than `max_request_body_bytes` (16 KB) is sent as `{"truncated": true}`. Never sent for the paths and route names in `request_body_exclude`, by default the Fortify login, registration, password and two-factor routes. `ERROR_REPORTER_INCLUDE_REQUEST_BODY=false` turns it off.
+- The exception code (`exception_code`, when not `0`) and the referrer (`referrer`, without query string, redacted) on server reports.
+- The client address on server reports (`ip`), from `$request->ip()`. `ERROR_REPORTER_IP` chooses `masked` (default: IPv4 /24, IPv6 /48), `full` or `off`. `IpMode` holds the rule, so a collector can apply it too.
+- `BrowserName::fromUserAgent()`, which turns a user agent into a browser family and major version such as `Safari 18`, for a collector to use on browser reports.
+- `J87NL\ErrorReporter\Deploy\AppRelease`, the release helper for `deploy.php`, loadable without Laravel. See [Deploying](docs/deploying.md).
+- Tests for the browser script, run with the test runner built into Node.js.
+
+### Changed
+
+- The browser script only sends a network error (Inertia's `HttpNetworkError`, a failed `fetch`, an XHR `Network Error`) when the same kind happens three times within 60 seconds in one page load. The `networkErrorThreshold` and `networkErrorWindowMs` options change this.
+
 ## [0.3.1] - 2026-10-23
 
 ### Changed
@@ -55,7 +70,8 @@ All notable changes to this package are documented here. The format follows [Kee
 - Replaces a scrubbed context larger than `max_context_bytes` by `{"truncated": true}` before it leaves the app.
 - Logs the scrubbed report when the transport fails, so the report is not lost.
 
-[Unreleased]: https://github.com/J87NL/laravel-error-reporter/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/J87NL/laravel-error-reporter/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/J87NL/laravel-error-reporter/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/J87NL/laravel-error-reporter/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/J87NL/laravel-error-reporter/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/J87NL/laravel-error-reporter/compare/v0.2.0...v0.2.1

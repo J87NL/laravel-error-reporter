@@ -99,3 +99,10 @@ The package is tested with Pest and Orchestra Testbench:
 composer install
 vendor/bin/pest
 ```
+
+The browser script is tested with the test runner built into Node.js 22.18 or newer, without any
+packages:
+
+```bash
+node --test 'tests/js/*.test.ts'
+```

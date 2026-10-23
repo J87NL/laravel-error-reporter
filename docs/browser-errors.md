@@ -132,6 +132,8 @@ type ErrorReporterOptions = {
     release?: string | null;
     environment?: string | null;
     maxReports?: number;
+    networkErrorThreshold?: number;
+    networkErrorWindowMs?: number;
 };
 ```
 
@@ -142,6 +144,8 @@ type ErrorReporterOptions = {
 | `release` | Sent with every error |
 | `environment` | Sent with every error |
 | `maxReports` | The number of distinct errors sent per page load. Default `10` |
+| `networkErrorThreshold` | How often the same kind of network error must happen before it is sent. Default `3` |
+| `networkErrorWindowMs` | The window those network errors must fall in, in milliseconds. Default `60000` |
 
 `browserConfig()` does not return `maxReports`. To change it, add it yourself:
 
@@ -178,6 +182,27 @@ Some details:
   other origins this way, without any details.
 - Every path segment of 32 or more letters, digits, `-` and `_` is replaced by `[scrubbed]`, so a
   URL such as `/reset-password/<token>` does not leak the token.
+
+### Network errors
+
+A request that fails because the connection drops is not a bug in your app. During a deploy, or on a
+flaky mobile connection, one such failure is normal. So a network error is only sent when the same kind
+happens three times within 60 seconds in one page load. These count as network errors:
+
+- Inertia's `HttpNetworkError`, when it reaches the script as an unhandled rejection or a Vue error;
+- a `TypeError` from `fetch` with `Failed to fetch` (Chrome), `NetworkError when attempting to fetch
+  resource.` (Firefox) or `Load failed` (Safari);
+- an axios or other XHR error with the message `Network Error`.
+
+The third one is sent like any other error, once per page load.
+
+### Added by the collector
+
+The script sends no client address and no user agent. The collector reads both from the report
+request itself: it stores the address according to the app's address setting there (masked by
+default), and of the user agent only the browser family and major version, such as `Safari 18`,
+`Chrome 141` or `Other` for anything else, crawlers included. Without a user agent the browser stays
+empty.
 
 ## How it is sent
 

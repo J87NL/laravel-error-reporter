@@ -26,6 +26,10 @@ This creates `config/error-reporter.php`.
 | `max_frames` | | `30` |
 | `max_message_length` | | `2000` |
 | `max_context_bytes` | | `8192` |
+| `ip` | `ERROR_REPORTER_IP` | `'masked'` |
+| `include_request_body` | `ERROR_REPORTER_INCLUDE_REQUEST_BODY` | `true` |
+| `max_request_body_bytes` | | `16384` |
+| `request_body_exclude` | | see [Request body](#request-body) |
 | `scrub` | | see [Scrub](#scrub) |
 | `redact.secrets` | `ERROR_REPORTER_REDACT_SECRETS` | `true` |
 | `redact.personal_data` | `ERROR_REPORTER_REDACT_PERSONAL_DATA` | `true` |
@@ -105,8 +109,9 @@ application's default.
 'environment' => env('APP_ENV', 'production'),
 ```
 
-Both are added to every server report and passed to the browser script. Set `APP_RELEASE` to the git
-SHA of the deployed release in your deploy script. An empty release is sent as `null`.
+Both are added to every server report and passed to the browser script. Set `APP_RELEASE` in your
+deploy script, for example with the [`AppRelease` helper](deploying.md). An empty release is sent as
+`null`.
 
 ---
 
@@ -149,6 +154,62 @@ nothing is sent, and every report logs the warning described in
 | `max_frames` | The number of stack frames sent, counting the frame where the exception was thrown. At least one is always sent |
 | `max_message_length` | The length the exception message is cut to. A cut message ends with `...`, which comes on top of the limit |
 | `max_context_bytes` | The largest scrubbed context, as JSON, that is sent. A larger context is sent as `{"truncated": true}` |
+
+---
+
+## Client address
+
+```php
+'ip' => env('ERROR_REPORTER_IP', 'masked'),
+```
+
+How the client address of the request is sent: `masked` (IPv4 with the last part zeroed, IPv6 cut to
+48 bits), `full` or `off`. An unknown value counts as `masked`. Browser reports carry no address from
+the script; the collector takes it from the report request and applies the mode set for the app
+there. See [Client address](payload.md#client-address).
+
+To send full addresses without touching the environment, publish the config and change the default:
+
+```php
+'ip' => env('ERROR_REPORTER_IP', 'full'),
+```
+
+---
+
+## Request body
+
+```php
+'include_request_body' => (bool) env('ERROR_REPORTER_INCLUDE_REQUEST_BODY', true),
+
+'max_request_body_bytes' => 16384,
+
+'request_body_exclude' => RequestBody::DEFAULT_EXCLUDE,
+```
+
+| Key | Description |
+|---|---|
+| `include_request_body` | `false` never sends the request input |
+| `max_request_body_bytes` | The largest scrubbed body, as JSON, that is sent. A larger body is sent as `{"truncated": true}` |
+| `request_body_exclude` | Paths and route names whose body is never sent. Each entry is matched with `$request->is()` and `$request->routeIs()`, so `*` works as a wildcard |
+
+The default list (`RequestBody::DEFAULT_EXCLUDE`) covers the login, logout, registration, password
+and two-factor routes of Laravel Fortify and the starter kits: `login`, `logout`, `register`,
+`forgot-password`, `reset-password*`, `confirm-password`, `password/*`, `password.*`, `user/password`,
+`user-password.*`, `user/confirm-password`, `user/confirmed-password-status`, `two-factor*`,
+`two-factor.*`, `user/two-factor*`, `settings/password` and `settings/two-factor*`, and `login`,
+`register`, `forgot-password`, `reset-password*` and `two-factor*` behind a prefix such as `nl/` or
+`admin/`. Auth routes on other paths or names, and forms with secrets in fields without a
+[`scrub`](#scrub) word (a one-time `code`, a `pin`, card details), are not covered: add them to the
+list, keeping the defaults:
+
+```php
+'request_body_exclude' => [
+    ...RequestBody::DEFAULT_EXCLUDE,
+    'checkout/payment',
+],
+```
+
+See [Request body](payload.md#request-body).
 
 ---
 

@@ -194,16 +194,31 @@ updating to 0.3:
 
 Errors group once more after the update, because the masked values and the fingerprint change.
 
+## Request body
+
+The request input goes through the same two steps as the context: sensitive keys are masked at any
+depth, then the value rules run over every string key and value that is left. See
+[Request body](payload.md#request-body).
+
+## Client address
+
+The client address is masked by default, see [Client address](payload.md#client-address).
+
 ## What is not scrubbed
 
-The stack trace, the file and the user id are sent as they are. A secret that matches none of the
+The stack trace, the file and the user id are sent as they are. The referrer gets the value rules
+but not the route parameter masking of the URL, so a short token in its path, such as
+`/invite/abc123`, is sent as it is. A secret that matches none of the
 rules above is sent as is, so do not put secrets in exception messages. A `QueryException` leaves
 out its bindings, see [Message](payload.md#message).
 
 ## What is never sent
 
-- The query string of the URL.
-- Request input, headers and cookies.
+- The query string of the URL and of the referrer.
+- Headers and cookies.
+- The request input of login, password and two-factor routes, see
+  [Request body](payload.md#request-body).
+- The contents of uploaded files.
 - Function arguments in the stack trace.
 - The bindings of a `QueryException`, and the driver message that can contain them. See
   [Message](payload.md#message).
