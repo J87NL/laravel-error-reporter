@@ -36,6 +36,7 @@ This creates `config/error-reporter.php`.
 | `redact.query_parameters` | | see [Redact](#redact) |
 | `redact.patterns` | | `[]` |
 | `ignore` | | `[]` |
+| `jobs.report_failures` | `ERROR_REPORTER_REPORT_FAILED_JOBS` | `true` |
 | `heartbeats.enabled` | `ERROR_REPORTER_HEARTBEATS_ENABLED` | `false` |
 | `heartbeats.endpoint` | `ERROR_REPORTER_HEARTBEAT_ENDPOINT` | `null` (derived from `endpoint`) |
 | `heartbeats.timeout` | | `3` |
@@ -274,6 +275,21 @@ The default is an empty array. For example:
 Exception classes that are never sent to the collector. Subclasses are ignored too. These exceptions
 are still logged by Laravel as usual; to stop Laravel reporting them at all, use the handler's
 `dontReport` instead. See [What is not reported](server-errors.md#what-is-not-reported).
+
+---
+
+## Jobs
+
+```php
+'jobs' => [
+    'report_failures' => (bool) env('ERROR_REPORTER_REPORT_FAILED_JOBS', true),
+],
+```
+
+When `true`, a queued job that fails is reported, including a job the worker kills after its
+timeout. `false` stops these reports; exceptions the exception handler reports are still sent. A
+published config without the `jobs` section keeps the default. See
+[Failed jobs](server-errors.md#failed-jobs).
 
 ---
 

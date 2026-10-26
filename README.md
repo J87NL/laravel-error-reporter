@@ -50,6 +50,7 @@ php artisan vendor:publish --tag=error-reporter-config
 |                                       | `redact.query_parameters`    | see below             |
 |                                       | `redact.patterns`            | `[]`                  |
 |                                       | `ignore` (exception classes) | `[]`                  |
+| `ERROR_REPORTER_REPORT_FAILED_JOBS`   | `jobs.report_failures`       | `true`                |
 |                                       | `transport`                  | `QueuedHttpTransport` |
 
 ## What it sends
@@ -72,6 +73,18 @@ The job is dispatched with `beforeCommit()`, so it never waits for an open datab
 When the transport itself fails, for example because the queue cannot be reached, the package logs a warning with the scrubbed report, so the report is not lost.
 
 Exceptions that the handler does not report never reach the package: exceptions in the handler's `dontReport` list, and exceptions with their own `report()` method that handles the reporting.
+
+## Failed jobs
+
+A queued job that fails is reported too, also when it fails without passing the exception handler. When a job runs past its timeout, the worker kills its own process, so the handler never sees the `TimeoutExceededException`. The package listens to Laravel's `JobFailed` and `JobTimedOut` events, which the worker fires before it kills the process, and sends the report right there:
+
+- the exception class and message, with `context.job` holding the job's display name, queue, connection and attempts. The job's payload and arguments are never sent;
+- a timed-out attempt that will be retried is reported as a `TimeoutExceededException` too;
+- every timeout of one job lands in one group: for `TimeoutExceededException` and `MaxAttemptsExceededException` the fingerprint uses the class and the exact message (which holds the job name), not the stack trace, which depends on where the job happened to be stopped;
+- an exception is sent once: a job that throws and then fails is not sent again when the handler reports the same exception;
+- `ignore`, the handler's `dontReport` and `enabled` apply as usual. `ERROR_REPORTER_REPORT_FAILED_JOBS=false` turns it off.
+
+The report is handed to the transport inside the worker before the kill. With the default transport that means the delivery job is on the queue before the process stops.
 
 ## Scrubbing
 

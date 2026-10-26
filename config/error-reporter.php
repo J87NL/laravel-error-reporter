@@ -67,6 +67,10 @@ return [
 
     'ignore' => [],
 
+    'jobs' => [
+        'report_failures' => (bool) env('ERROR_REPORTER_REPORT_FAILED_JOBS', true),
+    ],
+
     'heartbeats' => [
         'enabled' => (bool) env('ERROR_REPORTER_HEARTBEATS_ENABLED', false),
 

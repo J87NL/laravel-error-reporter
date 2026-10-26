@@ -56,6 +56,28 @@ class ErrorReport
     }
 
     /**
+     * @param  array<string, mixed>  $report
+     * @param  array<string, mixed>  $context
+     * @return array<string, mixed>
+     */
+    public function withContext(array $report, array $context): array
+    {
+        if ($context === []) {
+            return $report;
+        }
+
+        $redacted = $this->redactor->redact($this->scrubber->scrub($context));
+        $existing = $report['context'] ?? [];
+
+        $report['context'] = $this->limitedContext([
+            ...(is_array($existing) ? $existing : []),
+            ...(is_array($redacted) ? $redacted : []),
+        ]);
+
+        return $report;
+    }
+
+    /**
      * @return list<array{file: string|null, line: int|null, function: string|null, class: string|null, in_app: bool}>
      */
     private function frames(Throwable $exception): array

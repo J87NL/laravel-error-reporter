@@ -23,7 +23,7 @@ is what the [transport](transports.md) receives and what the queued job posts to
 | `user_id` | string or null | The id of the user on the default guard, as a string |
 | `environment` | string | The [environment](configuration.md#release-and-environment) |
 | `release` | string or null | The [release](configuration.md#release-and-environment) |
-| `context` | array | The exception's `context()`, scrubbed and redacted |
+| `context` | array | The exception's `context()`, scrubbed and redacted. For a [failed job](server-errors.md#failed-jobs) also `job`, with the job's name, queue, connection and attempts |
 | `occurred_at` | string | The moment of the report, in ISO 8601 |
 
 An example (the fingerprint is shortened):
@@ -177,6 +177,12 @@ The fingerprint is a SHA-256 hash of:
 - the file of the top in-app frame (or of the first frame, when no frame is in-app);
 - the class and function of that frame;
 - the normalized message.
+
+For a `TimeoutExceededException` or a `MaxAttemptsExceededException`, and their subclasses, the frame
+is left out and the message is not normalized: the hash covers the class and the exact message only. Their message holds the job
+name, such as "App\Jobs\ImportOrders has timed out.", and their stack trace depends on where the job
+happened to be stopped, so every timeout of one job lands in one group. `Grouping::groupsByJob()`
+tells whether a class is grouped this way.
 
 The message is the redacted one, so two errors that differ only in a masked token, IBAN or phone
 number get the same fingerprint.

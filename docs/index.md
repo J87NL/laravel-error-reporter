@@ -16,9 +16,12 @@ shows up once with a count instead of once per occurrence.
    by key and by value; personal data too, unless you turn that off.
 3. A queued job posts the report to the collector with your server key. When the collector cannot be
    reached, the report goes to the log instead.
-4. In the browser, a small script catches Vue errors, uncaught errors and unhandled promise
+4. A queued job that fails is reported as well, including a job the worker kills after its timeout,
+   with the job's name, queue, connection and attempts but never its payload. See
+   [Failed jobs](server-errors.md#failed-jobs).
+5. In the browser, a small script catches Vue errors, uncaught errors and unhandled promise
    rejections, and posts them with a public browser key.
-5. Optionally, the package pings a heartbeat every five minutes from the scheduler and from each
+6. Optionally, the package pings a heartbeat every five minutes from the scheduler and from each
    watched queue, so the collector notices when either stops.
 
 ## Quick example

@@ -85,8 +85,9 @@ $this->app->bind(ErrorTransport::class, LogErrorTransport::class);
 
 ## Things to keep in mind
 
-- `send()` runs inside the exception handler, during the request or job that failed. Keep it fast;
-  queue anything slow.
+- `send()` runs inside the exception handler, during the request or job that failed. For a
+  [failed job](server-errors.md#failed-jobs) it runs inside the worker, just before a timed-out
+  worker kills its process. Keep it fast; queue anything slow.
 - Your transport receives every report, also when no endpoint or key is configured. Only the default
   transport checks those.
 - When `send()` throws, the exception is not passed on. The package logs a warning instead, see

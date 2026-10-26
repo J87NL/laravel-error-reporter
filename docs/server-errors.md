@@ -22,7 +22,7 @@ With a handler that only implements the `ExceptionHandler` contract, nothing is 
 
 ## What is not reported
 
-Only exceptions the handler reports reach the package. These never do:
+Apart from [failed jobs](#failed-jobs), only exceptions the handler reports reach the package. These never do:
 
 - exceptions Laravel does not report by default, such as validation errors, authentication and
   authorization errors, HTTP exceptions and `ModelNotFoundException`;
@@ -34,6 +34,63 @@ These reach the package but are not sent:
 - every exception while `enabled` is `false`;
 - exception classes, and their subclasses, listed in `ignore`;
 - failures of the `SendErrorReport` job itself, see [No loops](#no-loops).
+
+## Failed jobs
+
+A queued job that fails is reported too, also when the failure never passes the exception handler.
+That matters most for timeouts: when a job runs past its `timeout`, the worker kills its own
+process, so the handler never sees the `TimeoutExceededException`.
+
+The package listens to two events of the queue worker, both fired before the worker kills the
+process:
+
+- `Illuminate\Queue\Events\JobFailed`, fired when a job is marked as failed: it threw on its last
+  attempt, it timed out on its last attempt, it ran out of attempts or it called `$this->fail()`.
+  The report holds the exception of the failure.
+- `Illuminate\Queue\Events\JobTimedOut`, fired on every timeout. When the job has not failed yet,
+  because it will be retried, the package reports a `TimeoutExceededException` for that attempt.
+  When it has failed, the `JobFailed` report already covers it.
+
+The report is built and handed to the [transport](transports.md) right there, inside the worker,
+before the kill. With the default transport the delivery job is pushed to its queue before the
+process stops.
+
+Next to the usual fields, `context.job` holds:
+
+| Key | Holds |
+|---|---|
+| `name` | The job's display name, such as `App\Jobs\ImportOrders` |
+| `queue` | The queue the job ran on |
+| `connection` | The queue connection |
+| `attempts` | The number of attempts so far |
+
+The job's payload and constructor arguments are never sent: they can hold personal data. The
+[scrub words and value rules](scrubbing.md) apply to these fields as to any other context.
+
+### Grouping
+
+Every `TimeoutExceededException` and `MaxAttemptsExceededException` of one job lands in one group.
+Their fingerprint uses the class and the exact message, which holds the job name, and not the stack
+trace, which depends on where the job happened to be stopped. The message is not normalized, so
+`ImportV2` and `ImportV3` stay apart. See [Fingerprint](payload.md#fingerprint).
+
+### Sent once
+
+An exception is sent at most once. A job that throws on its last attempt fires `JobFailed` first, and
+the worker then passes the same exception to the handler. The package recognises the exception
+object and does not send it again. A job that throws on an earlier attempt is reported by the
+handler as before, without `context.job`. The same goes for an exception your job catches,
+passes to `report()` and throws again: it is sent once, from `report()`, without `context.job`.
+
+With `Worker::$killOnTimeout = false` (Laravel 13) the worker throws the timeout into the job
+instead of killing the process. The package then skips `JobTimedOut`, and the timeout is sent once,
+through `JobFailed` or the exception handler.
+
+### Turning it off
+
+`ignore`, the handler's `dontReport` list and `enabled` apply to failed jobs too. Set
+`ERROR_REPORTER_REPORT_FAILED_JOBS=false` to stop reporting failed jobs; exceptions the handler
+reports are still sent. See [Jobs](configuration.md#jobs).
 
 ## Reporting by hand
 
@@ -86,8 +143,8 @@ outside the database, or at a `database` queue on a connection of its own.
 The package never reports its own failures:
 
 - An exception thrown from inside `SendErrorReport` is not sent again.
-- A `SendErrorReport` job that times out or runs out of attempts is not sent again. The same
-  exceptions from your own jobs are sent as usual.
+- A `SendErrorReport` job that times out, runs out of attempts or fails is not sent again. The same
+  failures of your own jobs are sent as usual.
 - While a report is being built and handed to the transport, a second exception reported at the
   same moment is skipped.
 

@@ -12,27 +12,44 @@ use Illuminate\Support\Facades\Log;
 use J87NL\ErrorReporter\Contracts\ErrorTransport;
 use J87NL\ErrorReporter\Jobs\SendErrorReport;
 use Throwable;
+use WeakMap;
 
 class ErrorReporter
 {
     private bool $reporting = false;
 
+    /**
+     * @var WeakMap<Throwable, true>
+     */
+    private WeakMap $reported;
+
     public function __construct(
         private readonly Application $container,
         private readonly ErrorReport $errorReport,
-    ) {}
+    ) {
+        $this->reported = new WeakMap;
+    }
 
     public function report(Throwable $exception): void
     {
-        if ($this->reporting || ! config('error-reporter.enabled', true) || $this->isIgnored($exception) || $this->isOwnFailure($exception)) {
+        $this->reportWithContext($exception, []);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    public function reportWithContext(Throwable $exception, array $context): void
+    {
+        if ($this->reporting || isset($this->reported[$exception]) || ! config('error-reporter.enabled', true) || $this->isIgnored($exception) || $this->isOwnFailure($exception)) {
             return;
         }
 
         $this->reporting = true;
+        $this->reported[$exception] = true;
         $report = null;
 
         try {
-            $report = $this->errorReport->fromThrowable($exception, $this->request(), $this->userId());
+            $report = $this->errorReport->withContext($this->errorReport->fromThrowable($exception, $this->request(), $this->userId()), $context);
 
             $this->container->make(ErrorTransport::class)->send($report);
         } catch (Throwable $failure) {

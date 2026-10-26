@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace J87NL\ErrorReporter;
 
+use Illuminate\Queue\MaxAttemptsExceededException;
+
 class Grouping
 {
     private const array PATTERNS = [
@@ -33,6 +35,15 @@ class Grouping
      */
     public static function fingerprint(string $exceptionClass, ?array $frame, string $message): string
     {
+        if (self::groupsByJob($exceptionClass)) {
+            return hash('sha256', implode('|', [
+                $exceptionClass,
+                '',
+                '',
+                trim($message),
+            ]));
+        }
+
         return hash('sha256', implode('|', [
             $exceptionClass,
             (string) ($frame['file'] ?? ''),
@@ -54,5 +65,10 @@ class Grouping
         }
 
         return $frames[0] ?? null;
+    }
+
+    public static function groupsByJob(string $exceptionClass): bool
+    {
+        return is_a($exceptionClass, MaxAttemptsExceededException::class, true);
     }
 }

@@ -6,7 +6,10 @@ namespace J87NL\ErrorReporter;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Foundation\Exceptions\Handler;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobTimedOut;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use J87NL\ErrorReporter\Contracts\ErrorTransport;
@@ -66,6 +69,10 @@ class ErrorReporterServiceProvider extends ServiceProvider
                 $this->app->make(ErrorReporter::class)->report($exception);
             });
         });
+
+        $events = $this->app->make(Dispatcher::class);
+        $events->listen(JobFailed::class, [FailedJobReporter::class, 'failed']);
+        $events->listen(JobTimedOut::class, [FailedJobReporter::class, 'timedOut']);
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $this->app->make(HeartbeatSchedule::class)->register($schedule);

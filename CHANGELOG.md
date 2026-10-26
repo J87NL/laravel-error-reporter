@@ -2,7 +2,20 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.5.0] - 2026-10-26
+
+### Added
+
+- Failed queued jobs are reported, also when they never pass the exception handler. The package listens to `JobFailed` and `JobTimedOut`, which the worker fires before it kills a timed-out process, so a job that runs past its timeout is now reported as a `TimeoutExceededException`. A timed-out attempt that will be retried is reported too. See [Failed jobs](docs/server-errors.md#failed-jobs).
+- `context.job` on these reports, with the job's display name, queue, connection and attempts. The job's payload and arguments are never sent.
+- `jobs.report_failures` (`ERROR_REPORTER_REPORT_FAILED_JOBS`, default `true`) to turn it off. `ignore`, the handler's `dontReport` and `enabled` apply as usual.
+- `ErrorReporter::reportWithContext()`, which merges extra context into the report after scrubbing and redaction. `ErrorReport::withContext()` does the merge.
+- `Grouping::groupsByJob()`.
+
+### Changed
+
+- An exception is sent at most once, even when it is reported twice: a job that throws on its last attempt is no longer sent again when the worker passes the same exception to the handler.
+- `TimeoutExceededException` and `MaxAttemptsExceededException` are grouped by class and exact message (which holds the job name), no longer by the top stack frame or the normalized message, so every timeout of one job lands in one group. Existing groups of these exceptions get a new fingerprint once. The collector computes the fingerprint with `Grouping`, so it groups this way once it runs this version.
 
 ## [0.4.0] - 2026-10-23
 
@@ -70,7 +83,7 @@ All notable changes to this package are documented here. The format follows [Kee
 - Replaces a scrubbed context larger than `max_context_bytes` by `{"truncated": true}` before it leaves the app.
 - Logs the scrubbed report when the transport fails, so the report is not lost.
 
-[Unreleased]: https://github.com/J87NL/laravel-error-reporter/compare/v0.4.0...HEAD
+[0.5.0]: https://github.com/J87NL/laravel-error-reporter/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/J87NL/laravel-error-reporter/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/J87NL/laravel-error-reporter/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/J87NL/laravel-error-reporter/compare/v0.2.1...v0.3.0
